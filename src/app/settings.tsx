@@ -30,7 +30,7 @@ export default function SettingsScreen() {
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <SwitchRow
           title="快速模式"
-          description="开启时思考强度 low,一条建议 1~2 秒;关闭时 high,点评更细致,但每次多等 1~2 秒。"
+          description="开启时不使用思考(1.6~1.8 秒出结果);关闭时用高强度思考,点评更细致,但要等 3~6 秒。"
           value={settings.fastMode}
           onValueChange={(v) => updateSettings({ fastMode: v })}
         />
@@ -90,7 +90,9 @@ export default function SettingsScreen() {
               ? `取景自动分析:开启,每 ${settings.intervalSec} 秒一次`
               : '取景自动分析:关闭,只在按快门后点评'}
           </Text>
-          <Text style={styles.summaryLine}>思考强度:{thinking === 'low' ? 'low(快)' : 'high(细致)'}</Text>
+          <Text style={styles.summaryLine}>
+            思考强度:{thinking === 'disabled' ? '不思考(快)' : 'high(细致)'}
+          </Text>
         </View>
       </ScrollView>
     </SafeAreaView>
