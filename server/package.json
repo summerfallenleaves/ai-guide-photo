@@ -1,0 +1,13 @@
+{
+  "name": "ai-guide-photograph-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "本地代理服务:光学校验 + DeepSeek 视觉建议",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env index.mjs"
+  },
+  "dependencies": {
+    "sharp": "^0.34.0"
+  }
+}
