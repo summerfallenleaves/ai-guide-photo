@@ -8,13 +8,10 @@ import { useEffect, useState } from 'react';
  * 返回 null 表示当前姿态无法判断水平(比如手机接近平放做俯拍)。
  */
 export function useTilt(active: boolean): number | null {
-  const [tiltDeg, setTiltDeg] = useState<number | null>(null);
+  const [rawTilt, setRawTilt] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!active) {
-      setTiltDeg(null);
-      return;
-    }
+    if (!active) return;
 
     let mounted = true;
     Accelerometer.setUpdateInterval(120);
@@ -22,10 +19,10 @@ export function useTilt(active: boolean): number | null {
       if (!mounted) return;
       // y 分量接近 0:手机近乎平放,此时"水平"没有意义
       if (Math.abs(y) < 0.18) {
-        setTiltDeg(null);
+        setRawTilt(null);
         return;
       }
-      setTiltDeg((Math.atan2(x, y) * 180) / Math.PI);
+      setRawTilt((Math.atan2(x, y) * 180) / Math.PI);
     });
 
     return () => {
@@ -34,5 +31,6 @@ export function useTilt(active: boolean): number | null {
     };
   }, [active]);
 
-  return tiltDeg;
+  // 不监听时直接返回 null,避免在 effect 里同步 setState
+  return active ? rawTilt : null;
 }

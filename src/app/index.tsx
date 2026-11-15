@@ -2,7 +2,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { Asset, usePermissions as useMediaPermissions } from 'expo-media-library';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -38,7 +38,7 @@ export default function CameraScreen() {
 
   const busyRef = useRef(false);
   const failuresRef = useRef(0);
-  const flash = useRef(new Animated.Value(0)).current;
+  const flash = useMemo(() => new Animated.Value(0), []);
 
   const tilt = useTilt(focused && ready);
 
