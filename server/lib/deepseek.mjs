@@ -58,45 +58,51 @@ export async function askVisionAndJudge({ imageBase64, mode, metrics, config }) 
       },
     ],
     temperature: 0.4,
-    max_tokens: 500,
+    max_tokens: isCapture ? 450 : 220,
     response_format: { type: 'json_object' },
+    // 取景建议是短结构化输出,不需要思维链。
+    // DeepSeek 默认开启思考模式且 effort=high,会让延迟从 ~1s 涨到 4s+,这里关掉。
+    thinking: { type: 'disabled' },
   };
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), config.timeoutMs);
+  const timeoutMs = isCapture ? (config.captureTimeoutMs ?? config.timeoutMs) : config.timeoutMs;
+
+  const call = async (payload) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(`${config.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${config.apiKey}`,
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+  };
 
   let res;
   try {
-    res = await fetch(`${config.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${config.apiKey}`,
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
+    res = await call(body);
+  } catch (err) {
+    if (err?.name === 'AbortError') throw new Error(`DeepSeek 请求超时(${timeoutMs}ms)`);
+    // 这台机器到 api.deepseek.com 偶发 ECONNRESET,重试一次
+    res = await call(body);
+  }
 
-    // 部分模型/账号不开放 json_object,降级重试一次
-    if (res.status === 400) {
-      const errText = await res.text().catch(() => '');
-      if (/response_format|json_object|json mode/i.test(errText)) {
-        delete body.response_format;
-        res = await fetch(`${config.baseUrl}/chat/completions`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${config.apiKey}`,
-          },
-          body: JSON.stringify(body),
-          signal: controller.signal,
-        });
-      } else {
-        throw new Error(`DeepSeek 400: ${errText.slice(0, 200)}`);
-      }
+  // 部分模型/账号不开放 json_object,降级重试一次
+  if (res.status === 400) {
+    const errText = await res.text().catch(() => '');
+    if (/response_format|json_object|json mode/i.test(errText)) {
+      delete body.response_format;
+      res = await call(body);
+    } else {
+      throw new Error(`DeepSeek 400: ${errText.slice(0, 200)}`);
     }
-  } finally {
-    clearTimeout(timer);
   }
 
   if (!res.ok) {

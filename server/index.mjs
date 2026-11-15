@@ -9,6 +9,8 @@ const CONFIG = {
   model: process.env.DEEPSEEK_MODEL?.trim() || 'deepseek-flash',
   baseUrl: process.env.DEEPSEEK_BASE_URL?.trim() || 'https://api.deepseek.com',
   timeoutMs: Number(process.env.ANALYZE_TIMEOUT_MS ?? 15000),
+  // 拍后复盘要多写几句话,给宽一点
+  captureTimeoutMs: Number(process.env.ANALYZE_CAPTURE_TIMEOUT_MS ?? 30000),
 };
 
 const MAX_BODY = 12 * 1024 * 1024;

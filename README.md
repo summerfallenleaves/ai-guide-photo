@@ -51,9 +51,21 @@ npm run server
 npm start
 ```
 
-手机装 **Expo Go**(应用商店搜),和电脑连**同一个 Wi-Fi**,扫终端里的二维码。
+终端里会出现一个二维码。**这个二维码不是网址,必须用手机上的 Expo Go 扫,用浏览器扫一定会失败。**
 
-App 会自动从 Expo 的 `hostUri` 推导出电脑的局域网 IP,不需要你手动填地址。
+`exp://` 是 Expo 自定义协议,只有 Expo Go 认得;微信、夸克、系统浏览器都会把它当坏链接。
+
+- 手机装 **Expo Go**:应用商店搜;国内没有 Google Play 就去 <https://expo.dev/go> 下 Android 版 APK
+- 打开 Expo Go → 启动页选「Scan QR code」→ 扫终端二维码
+- 扫码无效时,在 Expo Go 里手动输:`exp://<电脑IP>:8081`(如 `exp://<电脑IP>:8081`)
+
+手机和电脑连**同一个 Wi-Fi**。App 会自动从 Expo 的 `hostUri` 推导出电脑的局域网 IP,不需要你手动填代理地址。
+
+> 鸿蒙 NEXT 设备装不了 Expo Go(不兼容安卓 APK),真机调试只能用 Android 手机。
+
+### 4. 验证局域网是否通
+
+手机浏览器打开 `http://<电脑IP>:8787/health`,能返回 JSON 就说明代理在局域网里可达。打不开就是防火墙或路由器 AP 隔离的问题。
 
 ## 常见问题
 
@@ -71,6 +83,18 @@ App 会自动从 Expo 的 `hostUri` 推导出电脑的局域网 IP,不需要你�
 
 **拍的照只有 70% 画质?**  
 MVP 为了同时拿到"存相册的文件"和"送去分析的 base64",用了一次拍摄、质量 0.7。后续拆成两次拍摄可恢复原画质。
+
+**建议出得慢、或者总是退回"本地"?**  
+DeepSeek 的 `deepseek-flash` **默认开启思考模式且 effort=high**,会让一次调用从 ~1s 涨到 4s+,很容易撞上超时。代码里已显式传 `thinking: { type: "disabled" }`——取景建议是短结构化输出,不需要思维链。
+
+实测(局域网,`detail: low`):取景建议 **1.0~1.8s**,拍后点评 **1.3s**。
+
+如果还是慢,在 `server/.env` 里放宽:
+
+```
+ANALYZE_TIMEOUT_MS=20000
+ANALYZE_CAPTURE_TIMEOUT_MS=40000
+```
 
 ## 直接在自己电脑上验接口
 
