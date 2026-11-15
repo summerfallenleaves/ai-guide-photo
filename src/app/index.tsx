@@ -22,6 +22,7 @@ import { useTilt } from '@/hooks/use-tilt';
 import { useCameraLock } from '@/hooks/use-camera-lock';
 import { useOrientation } from '@/hooks/use-orientation';
 import { analyze, API_BASE_URL } from '@/lib/api';
+import { toAnalysisBase64 } from '@/lib/analysis-image';
 import { setLastCapture, setReviewState } from '@/lib/capture-store';
 import { liveAnalysisEnabled, thinkingOf, useSettings } from '@/lib/settings';
 import { saveToAlbum } from '@/lib/media';
@@ -137,11 +138,12 @@ export default function CameraScreen() {
     ]).start();
 
     try {
-      // 如果实时分析正在抓帧,这里最多等它那 200ms,不等网络
+      // 如果实时分析正在抓帧,这里最多等它那 200ms,不等网络。
+      // 不再要 base64:大图编码很慢,直接拖慢跳转。分析用的缩略图稍后在后台生成。
       const shot = await withCameraLock(() => {
         const cam = cameraRef.current;
         if (!cam) throw new Error('相机还没准备好');
-        return cam.takePictureAsync({ quality: 0.7, base64: true });
+        return cam.takePictureAsync({ quality: 0.9 });
       });
       if (!shot?.uri) throw new Error('拍照失败');
 
@@ -160,12 +162,15 @@ export default function CameraScreen() {
 
       // 点评在后台继续跑,结果推给复盘页
       const mySeq = ++reviewSeq.current;
-      const base64 = shot.base64;
-      if (!base64) {
-        setReviewState({ status: 'failed', error: '没有拿到图像数据' });
-      } else {
-        void (async () => {
+      const photoUri = shot.uri;
+      const photoWidth = shot.width;
+      const photoHeight = shot.height;
+
+      void (async () => {
           try {
+            // 只给模型用的一份缩略图,不影响相册和复盘页显示的原图
+            const base64 = await toAnalysisBase64(photoUri, photoWidth, photoHeight);
+            if (mySeq !== reviewSeq.current) return;
             const result = await analyze(base64, 'capture', { thinking: thinkingOf(settings) });
             if (mySeq !== reviewSeq.current) return; // 已经又拍了一张,丢弃旧结果
             setReviewState(
@@ -173,12 +178,11 @@ export default function CameraScreen() {
                 ? { status: 'done', result }
                 : { status: 'failed', error: '服务返回了意外类型' },
             );
-          } catch (err) {
-            if (mySeq !== reviewSeq.current) return;
-            setReviewState({ status: 'failed', error: (err as Error).message });
-          }
-        })();
-      }
+        } catch (err) {
+          if (mySeq !== reviewSeq.current) return;
+          setReviewState({ status: 'failed', error: (err as Error).message });
+        }
+      })();
     } catch (err) {
       setError((err as Error).message);
     } finally {

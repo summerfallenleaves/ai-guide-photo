@@ -52,7 +52,7 @@ export async function askVisionAndJudge({ imageBase64, mode, metrics, config }) 
           { type: 'text', text: (isCapture ? CAPTURE_PROMPT : LIVE_PROMPT)(metrics) },
           {
             type: 'image_url',
-            image_url: { url: `data:image/jpeg;base64,${imageBase64}`, detail: 'low' },
+            image_url: { url: `data:image/jpeg;base64,${imageBase64}`, detail: config.detail ?? 'high' },
           },
         ],
       },

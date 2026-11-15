@@ -13,6 +13,8 @@ const CONFIG = {
   captureTimeoutMs: Number(process.env.ANALYZE_CAPTURE_TIMEOUT_MS ?? 30000),
   // disabled(默认) / low / high / max —— 思考模式开关
   thinking: process.env.DEEPSEEK_THINKING?.trim() || 'disabled',
+  // 视觉细节级别:high(默认,~1000 token)/ low(~200 token,更省更快但看不清细节)
+  detail: process.env.DEEPSEEK_DETAIL?.trim() || 'high',
 };
 
 const MAX_BODY = 12 * 1024 * 1024;
