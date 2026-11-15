@@ -1,7 +1,8 @@
 import { Image } from 'expo-image';
+import { Asset, usePermissions as useMediaPermissions } from 'expo-media-library';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useMemo } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { palette, radius } from '@/lib/theme';
@@ -9,6 +10,32 @@ import type { CaptureResult } from '@/lib/types';
 
 export default function ReviewScreen() {
   const { uri, saved, payload } = useLocalSearchParams<{ uri?: string; saved?: string; payload?: string }>();
+
+  const [mediaPermission, requestMediaPermission] = useMediaPermissions({
+    writeOnly: true,
+    granularPermissions: ['photo'],
+  });
+  const [savedState, setSavedState] = useState(saved === '1');
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (!uri || saving) return;
+    setSaving(true);
+    try {
+      try {
+        await Asset.create(uri);
+      } catch {
+        const res = mediaPermission?.granted ? { granted: true } : await requestMediaPermission();
+        if (!res.granted) throw new Error('需要相册写入权限,请在系统设置里打开');
+        await Asset.create(uri);
+      }
+      setSavedState(true);
+    } catch (err) {
+      Alert.alert('保存失败', (err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const review = useMemo<CaptureResult | null>(() => {
     if (!payload) return null;
@@ -53,12 +80,22 @@ export default function ReviewScreen() {
                 <View style={styles.pill}>
                   <Text style={styles.pillText}>{review?.source === 'deepseek' ? 'AI 点评' : '本地点评'}</Text>
                 </View>
-                {saved === '1' ? (
+                {savedState ? (
                   <View style={styles.pill}>
                     <Text style={styles.pillText}>已存相册</Text>
                   </View>
                 ) : null}
               </View>
+
+              {savedState ? null : (
+                <Pressable onPress={() => void handleSave()} style={styles.saveLink} hitSlop={8}>
+                  {saving ? (
+                    <ActivityIndicator size="small" color={palette.warn} />
+                  ) : (
+                    <Text style={styles.saveLinkText}>⚠ 还没存进相册,点这里保存</Text>
+                  )}
+                </Pressable>
+              )}
             </View>
           </View>
 
@@ -180,6 +217,15 @@ const styles = StyleSheet.create({
   pillText: {
     color: palette.textDim,
     fontSize: 11,
+    fontWeight: '600',
+  },
+  saveLink: {
+    alignSelf: 'flex-start',
+    paddingVertical: 2,
+  },
+  saveLinkText: {
+    color: palette.warn,
+    fontSize: 12.5,
     fontWeight: '600',
   },
   improvements: {

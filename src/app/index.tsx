@@ -112,14 +112,21 @@ export default function CameraScreen() {
       const shot = await cam.takePictureAsync({ quality: 0.7, base64: true });
       if (!shot?.uri) throw new Error('拍照失败');
 
+      // Android 13+ 写相册其实不需要运行时权限,先直接写;
+      // 失败了再申请权限重试(兼容旧系统 / iOS)
       let saved = false;
       try {
-        if (await ensureMediaPermission()) {
-          await Asset.create(shot.uri);
-          saved = true;
+        await Asset.create(shot.uri);
+        saved = true;
+      } catch (firstErr) {
+        try {
+          if (await ensureMediaPermission()) {
+            await Asset.create(shot.uri);
+            saved = true;
+          }
+        } catch (err) {
+          console.warn('[capture] 保存相册失败:', firstErr, err);
         }
-      } catch (err) {
-        console.warn('[capture] 保存相册失败:', err);
       }
 
       let review: CaptureResult | null = null;
