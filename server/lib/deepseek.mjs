@@ -142,17 +142,24 @@ export async function askVisionAndJudge({ imageBase64, mode, metrics, config }) 
 }
 
 /**
- * 思考模式的思维链同样计入 max_tokens。
- * 预算给小了会出现"推理把额度吃光、正文为空"的情况,所以按思考强度分档。
+ * max_tokens 在这里是"安全上限",不是配额:只有实际生成的 token 才计费,
+ * 给宽松一点不会多花钱,只是防止被硬截断。
+ *
+ * 实测占用(取景/点评):
+ *   不思考    正文  32~77 token
+ *   high      思考 260~814 token + 正文 ~50
+ *
+ * 思考模式的思维链同样计入这个额度,所以必须按强度分档——
+ * 之前统一给 450,high 模式下思考就把额度吃光、正文为空,直接退化成本地规则。
  */
 function pickMaxTokens(thinking, isCapture) {
   const mode = String(thinking ?? 'disabled').toLowerCase();
   if (mode === 'disabled' || mode === 'off' || mode === 'none') {
-    return isCapture ? 300 : 200;
+    return isCapture ? 600 : 400;
   }
-  if (mode === 'max') return 4000;
-  if (mode === 'low') return 1200;
-  return 2500; // high
+  if (mode === 'max') return 6000;
+  if (mode === 'low') return 1500;
+  return 3000; // high
 }
 
 function thinkingParams(level) {
