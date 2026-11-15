@@ -130,3 +130,24 @@ curl http://localhost:8787/health
 ```
 
 思考强度由客户端按请求传给代理(`POST /api/analyze` 的 `thinking` 字段),服务端也保留 `DEEPSEEK_THINKING` 环境变量作为兜底。
+
+## 本地构建 APK(已配置好)
+
+工具链全部装在项目内的 `.toolchain/`(不入库),不污染系统:
+
+```
+.toolchain/
+├── jdk17/              OpenJDK 17
+├── android-sdk/        compileSdk 36 / build-tools 37 / NDK 27.1 / CMake
+├── gradle-home/        Gradle 缓存 + 阿里云 Maven 镜像
+├── keys/aiguide.keystore   ← 签名密钥,务必备份!
+└── build.sh            一键构建
+```
+
+```bash
+.toolchain/build.sh assembleRelease
+# 产物:android/app/build/outputs/apk/release/app-release.apk
+```
+
+> ⚠️ `keys/aiguide.keystore` 是 Release 签名密钥。**丢了就没法给已安装的 App 做覆盖升级**
+> (只能卸载重装)。密码在 `android/app/build.gradle` 里。

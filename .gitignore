@@ -50,3 +50,6 @@ example
 
 # 手动下载的安装包(体积大,不入库)
 assets/apk/
+
+# 本地 Android 构建工具链(约 2GB,不入库)
+.toolchain/
