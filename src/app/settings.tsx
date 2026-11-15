@@ -6,7 +6,6 @@ import {
   INTERVAL_MAX,
   INTERVAL_MIN,
   liveAnalysisEnabled,
-  thinkingOf,
   updateSettings,
   useSettings,
 } from '@/lib/settings';
@@ -15,7 +14,6 @@ import { palette, radius } from '@/lib/theme';
 export default function SettingsScreen() {
   const settings = useSettings();
   const liveOn = liveAnalysisEnabled(settings);
-  const thinking = thinkingOf(settings);
 
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
@@ -28,6 +26,13 @@ export default function SettingsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <View style={styles.summary}>
+          <Text style={styles.summaryTitle}>当前生效</Text>
+          <Text style={styles.summaryLine}>
+            {liveOn ? `自动分析:每 ${settings.intervalSec} 秒` : '自动分析:关闭'}
+          </Text>
+        </View>
+
         <SwitchRow
           title="快速模式"
           description="开启时不使用思考(1.6~1.8 秒出结果);关闭时用高强度思考,点评更细致,但要等 3~6 秒。"
@@ -83,17 +88,6 @@ export default function SettingsScreen() {
           )}
         </View>
 
-        <View style={styles.summary}>
-          <Text style={styles.summaryTitle}>当前生效</Text>
-          <Text style={styles.summaryLine}>
-            {liveOn
-              ? `取景自动分析:开启,每 ${settings.intervalSec} 秒一次`
-              : '取景自动分析:关闭,只在按快门后点评'}
-          </Text>
-          <Text style={styles.summaryLine}>
-            思考强度:{thinking === 'disabled' ? '不思考(快)' : 'high(细致)'}
-          </Text>
-        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -254,7 +248,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.08)',
   },
   summary: {
-    marginTop: 8,
     padding: 14,
     borderRadius: radius.md,
     backgroundColor: 'rgba(91,200,255,0.08)',
