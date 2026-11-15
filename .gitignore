@@ -47,3 +47,6 @@ example
 # generated native folders
 /ios
 /android
+
+# 手动下载的安装包(体积大,不入库)
+assets/apk/
