@@ -2,8 +2,17 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  ActivityIndicator,
+  Animated,
+  Linking,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { GridOverlay } from '@/components/grid-overlay';
 import { LevelBadge } from '@/components/level-badge';
@@ -44,6 +53,10 @@ export default function CameraScreen() {
 
   const tilt = useTilt(focused && ready);
   const { isLandscape, toggle: toggleOrientation } = useOrientation();
+  const { width: screenWidth } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  // 横屏右侧面板宽度:窄一点,把预览尽量留给取景
+  const panelWidth = Math.min(Math.max(screenWidth * 0.34, 230), 320);
 
   useFocusEffect(
     useCallback(() => {
@@ -184,21 +197,25 @@ export default function CameraScreen() {
 
   return (
     <View style={styles.root}>
-      <CameraView
-        ref={cameraRef}
-        style={StyleSheet.absoluteFill}
-        facing={facing}
-        animateShutter={false}
-        onCameraReady={() => setReady(true)}
-        onMountError={(e) => setError(`相机启动失败:${e.message}`)}
-      />
+      {/*
+        横屏时这里是「左预览 + 右面板」的分栏;竖屏时面板不渲染,预览自动占满。
+        相机始终挂在同一个容器里,切换方向只改变尺寸,不会重建相机(不会闪黑)。
+      */}
+      <View style={[styles.stage, { paddingLeft: insets.left, paddingRight: insets.right }]}>
+        <View style={styles.cameraArea}>
+          <CameraView
+            ref={cameraRef}
+            style={StyleSheet.absoluteFill}
+            facing={facing}
+            animateShutter={false}
+            onCameraReady={() => setReady(true)}
+            onMountError={(e) => setError(`相机启动失败:${e.message}`)}
+          />
+          <GridOverlay visible={showGrid} />
+        </View>
 
-      <GridOverlay visible={showGrid} />
-
-      {isLandscape ? (
-        <View style={styles.landscapeRow} pointerEvents="box-none">
-          <View style={styles.landscapeSpacer} pointerEvents="none" />
-          <SafeAreaView style={styles.landscapePanel} edges={['top', 'bottom', 'right']}>
+        {isLandscape ? (
+          <SafeAreaView style={[styles.landscapePanel, { width: panelWidth }]} edges={['top', 'bottom']}>
             <View style={styles.panelTopRow}>
               <LevelBadge tilt={tilt} />
               <RotateButton onPress={() => void toggleOrientation()} />
@@ -234,9 +251,14 @@ export default function CameraScreen() {
               </Pressable>
             </View>
           </SafeAreaView>
-        </View>
-      ) : (
-        <SafeAreaView style={styles.overlay} edges={['top', 'bottom']} pointerEvents="box-none">
+        ) : null}
+      </View>
+
+      {isLandscape ? null : (
+        <SafeAreaView
+          style={[StyleSheet.absoluteFill, styles.overlay]}
+          edges={['top', 'bottom']}
+          pointerEvents="box-none">
           <View style={styles.topRow} pointerEvents="box-none">
             <View style={styles.brand}>
               <Text style={styles.brandText}>AI 拍照引导</Text>
@@ -325,7 +347,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   overlay: {
-    flex: 1,
     justifyContent: 'space-between',
     paddingHorizontal: 16,
   },
@@ -340,28 +361,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  landscapeRow: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+  cameraArea: {
+    flex: 1,
+    overflow: 'hidden',
+    backgroundColor: '#000',
+  },
+  stage: {
+    flex: 1,
     flexDirection: 'row',
   },
-  landscapeSpacer: {
-    flex: 1,
-  },
   landscapePanel: {
-    width: '42%',
-    minWidth: 260,
-    maxWidth: 380,
     backgroundColor: '#0A0A0C',
     borderLeftWidth: StyleSheet.hairlineWidth,
     borderLeftColor: palette.border,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     justifyContent: 'space-between',
-    gap: 10,
+    gap: 8,
   },
   panelTopRow: {
     flexDirection: 'row',
