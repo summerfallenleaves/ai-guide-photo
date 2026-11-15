@@ -1,37 +1,54 @@
-import { Image } from 'expo-image';
 import { Asset, usePermissions as useMediaPermissions } from 'expo-media-library';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { palette, radius } from '@/lib/theme';
 import type { CaptureResult } from '@/lib/types';
+import { getLastCapture } from '@/lib/capture-store';
 
 export default function ReviewScreen() {
-  const { uri, saved, payload } = useLocalSearchParams<{ uri?: string; saved?: string; payload?: string }>();
+  const params = useLocalSearchParams<{ uri?: string; saved?: string; payload?: string }>();
+  const captured = getLastCapture();
+
+  // 优先用内存里那份,路由参数只作兜底
+  const photoUri = captured?.uri ?? (params.uri ? String(params.uri) : '');
+  const savedParam = params.saved ? String(params.saved) : '0';
+  const payload = captured?.payload || (params.payload ? String(params.payload) : '');
 
   const [mediaPermission, requestMediaPermission] = useMediaPermissions({
     writeOnly: true,
     granularPermissions: ['photo'],
   });
-  const [savedState, setSavedState] = useState(saved === '1');
+  const [savedState, setSavedState] = useState(captured ? captured.saved : savedParam === '1');
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [imgError, setImgError] = useState(false);
 
   const handleSave = async () => {
-    if (!uri || saving) return;
+    if (!photoUri || saving) return;
     setSaving(true);
+    setSaveError(null);
     try {
       try {
-        await Asset.create(uri);
+        await Asset.create(photoUri);
       } catch {
         const res = mediaPermission?.granted ? { granted: true } : await requestMediaPermission();
-        if (!res.granted) throw new Error('需要相册写入权限,请在系统设置里打开');
-        await Asset.create(uri);
+        if (!res.granted) throw new Error('相册权限被拒绝,请到系统设置里开启');
+        await Asset.create(photoUri);
       }
       setSavedState(true);
     } catch (err) {
-      Alert.alert('保存失败', (err as Error).message);
+      setSaveError((err as Error).message);
     } finally {
       setSaving(false);
     }
@@ -52,11 +69,19 @@ export default function ReviewScreen() {
   return (
     <View style={styles.root}>
       <View style={styles.photoWrap}>
-        {uri ? (
-          <Image source={{ uri }} style={styles.photo} contentFit="cover" transition={180} />
+        {photoUri && !imgError ? (
+          <Image
+            source={{ uri: photoUri }}
+            style={styles.photo}
+            resizeMode="cover"
+            onError={() => setImgError(true)}
+          />
         ) : (
           <View style={[styles.photo, styles.photoFallback]}>
-            <Text style={styles.fallbackText}>照片加载失败</Text>
+            <Text style={styles.fallbackText}>{photoUri ? '照片加载失败' : '没拿到照片地址'}</Text>
+            <Text style={styles.fallbackUri} numberOfLines={3}>
+              {photoUri || '(uri 为空)'}
+            </Text>
           </View>
         )}
         <View style={styles.photoFade} pointerEvents="none" />
@@ -86,6 +111,8 @@ export default function ReviewScreen() {
                   </View>
                 ) : null}
               </View>
+
+              {saveError ? <Text style={styles.saveErrorText}>保存失败:{saveError}</Text> : null}
 
               {savedState ? null : (
                 <Pressable onPress={() => void handleSave()} style={styles.saveLink} hitSlop={8}>
@@ -149,6 +176,19 @@ const styles = StyleSheet.create({
   fallbackText: {
     color: palette.textFaint,
     fontSize: 13,
+    fontWeight: '600',
+  },
+  fallbackUri: {
+    color: 'rgba(255,255,255,0.28)',
+    fontSize: 10,
+    marginTop: 6,
+    paddingHorizontal: 24,
+    textAlign: 'center',
+  },
+  saveErrorText: {
+    color: palette.danger,
+    fontSize: 12,
+    fontWeight: '600',
   },
   photoFade: {
     position: 'absolute',

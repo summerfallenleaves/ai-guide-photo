@@ -11,6 +11,7 @@ import { LevelBadge } from '@/components/level-badge';
 import { SuggestionCard } from '@/components/suggestion-card';
 import { useTilt } from '@/hooks/use-tilt';
 import { analyze, API_BASE_URL } from '@/lib/api';
+import { setLastCapture } from '@/lib/capture-store';
 import { palette, radius } from '@/lib/theme';
 import type { CaptureResult, LiveSuggestion } from '@/lib/types';
 
@@ -138,6 +139,12 @@ export default function CameraScreen() {
           setError((err as Error).message);
         }
       }
+
+      setLastCapture({
+        uri: shot.uri,
+        saved,
+        payload: review ? JSON.stringify(review) : '',
+      });
 
       router.push({
         pathname: '/review',
