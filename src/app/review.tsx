@@ -7,14 +7,15 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { getLastCapture } from '@/lib/capture-store';
 import { saveToAlbum } from '@/lib/media';
 import { palette, radius } from '@/lib/theme';
 import type { CaptureResult } from '@/lib/types';
-import { getLastCapture } from '@/lib/capture-store';
 
 export default function ReviewScreen() {
   const params = useLocalSearchParams<{ uri?: string; saved?: string; payload?: string }>();
@@ -29,6 +30,10 @@ export default function ReviewScreen() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [imgError, setImgError] = useState(false);
+
+  const { width, height } = useWindowDimensions();
+  const isLandscape = width > height;
+  const panelWidth = Math.min(Math.max(width * 0.36, 260), 340);
 
   const handleSave = async () => {
     if (!photoUri || saving) return;
@@ -50,92 +55,117 @@ export default function ReviewScreen() {
   }, [payload]);
 
   const score = review?.score ?? null;
-  const scoreColor = score === null ? palette.textDim : score >= 80 ? palette.good : score >= 60 ? palette.warn : palette.danger;
+  const scoreColor =
+    score === null ? palette.textDim : score >= 80 ? palette.good : score >= 60 ? palette.warn : palette.danger;
+
+  const photo = photoUri && !imgError ? (
+    <Image
+      source={{ uri: photoUri }}
+      style={styles.photo}
+      resizeMode="contain"
+      onError={() => setImgError(true)}
+    />
+  ) : (
+    <View style={[styles.photo, styles.photoFallback]}>
+      <Text style={styles.fallbackText}>{photoUri ? '照片加载失败' : '没拿到照片地址'}</Text>
+      <Text style={styles.fallbackUri} numberOfLines={3}>
+        {photoUri || '(uri 为空)'}
+      </Text>
+    </View>
+  );
+
+  const info = (
+    <>
+      <View style={styles.scoreRow}>
+        <View style={[styles.scoreRing, { borderColor: scoreColor }]}>
+          <Text style={[styles.scoreNumber, { color: scoreColor }]}>{score ?? '—'}</Text>
+          <Text style={styles.scoreUnit}>分</Text>
+        </View>
+        <View style={styles.scoreMeta}>
+          <Text style={styles.headline}>{review?.headline ?? '这张照片已保存'}</Text>
+          <View style={styles.metaPills}>
+            {review?.dimLabel ? (
+              <View style={styles.pill}>
+                <Text style={styles.pillText}>{review.dimLabel}</Text>
+              </View>
+            ) : null}
+            <View style={styles.pill}>
+              <Text style={styles.pillText}>{review?.source === 'deepseek' ? 'AI 点评' : '本地点评'}</Text>
+            </View>
+            {savedState ? (
+              <View style={styles.pill}>
+                <Text style={styles.pillText}>已存相册</Text>
+              </View>
+            ) : null}
+          </View>
+
+          {saveError ? <Text style={styles.saveErrorText}>保存失败:{saveError}</Text> : null}
+
+          {savedState ? null : (
+            <Pressable onPress={() => void handleSave()} style={styles.saveLink} hitSlop={8}>
+              {saving ? (
+                <ActivityIndicator size="small" color={palette.warn} />
+              ) : (
+                <Text style={styles.saveLinkText}>⚠ 还没存进相册,点这里保存</Text>
+              )}
+            </Pressable>
+          )}
+        </View>
+      </View>
+
+      {review?.improvements?.length ? (
+        <View style={styles.improvements}>
+          <Text style={styles.sectionTitle}>下次这样拍</Text>
+          {review.improvements.map((item, index) => (
+            <View key={index} style={styles.improvementRow}>
+              <View style={styles.indexBadge}>
+                <Text style={styles.indexText}>{index + 1}</Text>
+              </View>
+              <Text style={styles.improvementText}>{item}</Text>
+            </View>
+          ))}
+        </View>
+      ) : (
+        <Text style={styles.emptyHint}>这次没拿到点评,可能是网络或模型的问题。照片已经拍下来了。</Text>
+      )}
+
+      <View style={styles.actions}>
+        <Pressable style={styles.secondaryButton} onPress={() => router.back()}>
+          <Text style={styles.secondaryText}>再拍一张</Text>
+        </Pressable>
+        <Pressable style={styles.primaryButton} onPress={() => router.back()}>
+          <Text style={styles.primaryText}>完成</Text>
+        </Pressable>
+      </View>
+    </>
+  );
+
+  // 横屏:左照片 + 右信息栏。照片用 contain 完整显示,两侧留白,信息栏不压画面。
+  if (isLandscape) {
+    return (
+      <View style={[styles.root, styles.rootRow]}>
+        <View style={styles.photoPane}>{photo}</View>
+        <SafeAreaView
+          style={[styles.panel, { width: panelWidth }]}
+          edges={['top', 'bottom', 'right']}>
+          <ScrollView contentContainerStyle={styles.panelContent} showsVerticalScrollIndicator={false}>
+            {info}
+          </ScrollView>
+        </SafeAreaView>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.root}>
       <View style={styles.photoWrap}>
-        {photoUri && !imgError ? (
-          <Image
-            source={{ uri: photoUri }}
-            style={styles.photo}
-            resizeMode="cover"
-            onError={() => setImgError(true)}
-          />
-        ) : (
-          <View style={[styles.photo, styles.photoFallback]}>
-            <Text style={styles.fallbackText}>{photoUri ? '照片加载失败' : '没拿到照片地址'}</Text>
-            <Text style={styles.fallbackUri} numberOfLines={3}>
-              {photoUri || '(uri 为空)'}
-            </Text>
-          </View>
-        )}
+        {photo}
         <View style={styles.photoFade} pointerEvents="none" />
       </View>
 
       <SafeAreaView style={styles.sheet} edges={['bottom']}>
         <ScrollView contentContainerStyle={styles.sheetContent} showsVerticalScrollIndicator={false}>
-          <View style={styles.scoreRow}>
-            <View style={[styles.scoreRing, { borderColor: scoreColor }]}>
-              <Text style={[styles.scoreNumber, { color: scoreColor }]}>{score ?? '—'}</Text>
-              <Text style={styles.scoreUnit}>分</Text>
-            </View>
-            <View style={styles.scoreMeta}>
-              <Text style={styles.headline}>{review?.headline ?? '这张照片已保存'}</Text>
-              <View style={styles.metaPills}>
-                {review?.dimLabel ? (
-                  <View style={styles.pill}>
-                    <Text style={styles.pillText}>{review.dimLabel}</Text>
-                  </View>
-                ) : null}
-                <View style={styles.pill}>
-                  <Text style={styles.pillText}>{review?.source === 'deepseek' ? 'AI 点评' : '本地点评'}</Text>
-                </View>
-                {savedState ? (
-                  <View style={styles.pill}>
-                    <Text style={styles.pillText}>已存相册</Text>
-                  </View>
-                ) : null}
-              </View>
-
-              {saveError ? <Text style={styles.saveErrorText}>保存失败:{saveError}</Text> : null}
-
-              {savedState ? null : (
-                <Pressable onPress={() => void handleSave()} style={styles.saveLink} hitSlop={8}>
-                  {saving ? (
-                    <ActivityIndicator size="small" color={palette.warn} />
-                  ) : (
-                    <Text style={styles.saveLinkText}>⚠ 还没存进相册,点这里保存</Text>
-                  )}
-                </Pressable>
-              )}
-            </View>
-          </View>
-
-          {review?.improvements?.length ? (
-            <View style={styles.improvements}>
-              <Text style={styles.sectionTitle}>下次这样拍</Text>
-              {review.improvements.map((item, index) => (
-                <View key={index} style={styles.improvementRow}>
-                  <View style={styles.indexBadge}>
-                    <Text style={styles.indexText}>{index + 1}</Text>
-                  </View>
-                  <Text style={styles.improvementText}>{item}</Text>
-                </View>
-              ))}
-            </View>
-          ) : (
-            <Text style={styles.emptyHint}>这次没拿到点评,可能是网络或模型的问题。照片已经拍下来了。</Text>
-          )}
-
-          <View style={styles.actions}>
-            <Pressable style={styles.secondaryButton} onPress={() => router.back()}>
-              <Text style={styles.secondaryText}>再拍一张</Text>
-            </Pressable>
-            <Pressable style={styles.primaryButton} onPress={() => router.back()}>
-              <Text style={styles.primaryText}>完成</Text>
-            </Pressable>
-          </View>
+          {info}
         </ScrollView>
       </SafeAreaView>
     </View>
@@ -147,8 +177,17 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0A0A0C',
   },
+  rootRow: {
+    flexDirection: 'row',
+  },
   photoWrap: {
     flex: 1,
+    minHeight: 0,
+    backgroundColor: '#000',
+  },
+  photoPane: {
+    flex: 1,
+    minWidth: 0,
     backgroundColor: '#000',
   },
   photo: {
@@ -189,12 +228,25 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
     marginTop: -radius.lg,
+    // 关键:信息区最多占 58%,超出就内部滚动,永远不会把照片挤没
+    maxHeight: '58%',
   },
   sheetContent: {
     paddingHorizontal: 20,
     paddingTop: 22,
     paddingBottom: 12,
     gap: 18,
+  },
+  panel: {
+    backgroundColor: '#111114',
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: palette.border,
+  },
+  panelContent: {
+    paddingHorizontal: 16,
+    paddingTop: 18,
+    paddingBottom: 20,
+    gap: 16,
   },
   scoreRow: {
     flexDirection: 'row',
