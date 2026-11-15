@@ -3,12 +3,14 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { loadApiKey } from '@/lib/secure-key';
 import { loadSettings } from '@/lib/settings';
 import { palette } from '@/lib/theme';
 
 export default function RootLayout() {
   useEffect(() => {
     void loadSettings();
+    void loadApiKey();
   }, []);
 
   return (

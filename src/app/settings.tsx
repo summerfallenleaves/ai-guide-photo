@@ -1,7 +1,11 @@
 import { router } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { DEFAULT_ENDPOINT, verifyApiKey } from '@/lib/deepseek';
+import { useApiKey } from '@/hooks/use-api-key';
+import { getCachedApiKey, maskKey, saveApiKey } from '@/lib/secure-key';
 import {
   INTERVAL_MAX,
   INTERVAL_MIN,
@@ -14,6 +18,46 @@ import { palette, radius } from '@/lib/theme';
 export default function SettingsScreen() {
   const settings = useSettings();
   const liveOn = liveAnalysisEnabled(settings);
+
+  const savedKey = useApiKey();
+  const [keyInput, setKeyInput] = useState('');
+  const [editing, setEditing] = useState(!getCachedApiKey());
+  const [savingKey, setSavingKey] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  // 接口地址只在本页编辑,初始化一次即可
+  const [endpointInput, setEndpointInput] = useState(settings.apiEndpoint);
+
+  const handleSaveKey = async () => {
+    if (!keyInput.trim() || savingKey) return;
+    setSavingKey(true);
+    setTestResult(null);
+    try {
+      await saveApiKey(keyInput);
+      setKeyInput('');
+      setEditing(false);
+    } catch (err) {
+      setTestResult({ ok: false, message: `保存失败:${(err as Error).message}` });
+    } finally {
+      setSavingKey(false);
+    }
+  };
+
+  const handleTest = async () => {
+    const key = getCachedApiKey();
+    if (!key || testing) return;
+    setTesting(true);
+    setTestResult(null);
+    try {
+      await verifyApiKey(key, settings.apiEndpoint);
+      setTestResult({ ok: true, message: '连接正常,Key 可用' });
+    } catch (err) {
+      setTestResult({ ok: false, message: (err as Error).message });
+    } finally {
+      setTesting(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
@@ -31,6 +75,71 @@ export default function SettingsScreen() {
           <Text style={styles.summaryLine}>
             {liveOn ? `自动分析:每 ${settings.intervalSec} 秒` : '自动分析:关闭'}
           </Text>
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardTitle}>DeepSeek API Key</Text>
+            {savedKey && !editing ? (
+              <Pressable onPress={() => setEditing(true)} hitSlop={8}>
+                <Text style={styles.linkText}>更换</Text>
+              </Pressable>
+            ) : null}
+          </View>
+
+          {savedKey && !editing ? (
+            <>
+              <Text style={styles.keyValue}>{maskKey(savedKey)}</Text>
+              <Text style={styles.cardDesc}>
+                只加密保存在这台手机上(系统密钥库),不在安装包里,也不会上传到任何服务器。
+              </Text>
+              <View style={styles.actionRow}>
+                <Pressable style={styles.secondaryBtn} onPress={() => void handleTest()} disabled={testing}>
+                  {testing ? (
+                    <ActivityIndicator size="small" color={palette.accent} />
+                  ) : (
+                    <Text style={styles.secondaryBtnText}>测试连接</Text>
+                  )}
+                </Pressable>
+              </View>
+            </>
+          ) : (
+            <>
+              <TextInput
+                style={styles.input}
+                value={keyInput}
+                onChangeText={setKeyInput}
+                placeholder="sk-..."
+                placeholderTextColor="rgba(255,255,255,0.25)"
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry
+              />
+              <Text style={styles.cardDesc}>
+                在 platform.deepseek.com 创建。保存后只显示首尾各 4 位。
+              </Text>
+              <View style={styles.actionRow}>
+                <Pressable
+                  style={[styles.primaryBtn, !keyInput.trim() && styles.btnDisabled]}
+                  onPress={() => void handleSaveKey()}
+                  disabled={!keyInput.trim() || savingKey}>
+                  <Text style={styles.primaryBtnText}>{savingKey ? '保存中…' : '保存 Key'}</Text>
+                </Pressable>
+                {savedKey ? (
+                  <Pressable style={styles.secondaryBtn} onPress={() => setEditing(false)}>
+                    <Text style={styles.secondaryBtnText}>取消</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            </>
+          )}
+
+          {testResult ? (
+            <Text style={[styles.testResult, { color: testResult.ok ? palette.good : palette.danger }]}>
+              {testResult.ok ? '✓ ' : '✕ '}
+              {testResult.message}
+            </Text>
+          ) : null}
         </View>
 
         <SwitchRow
@@ -88,6 +197,24 @@ export default function SettingsScreen() {
           )}
         </View>
 
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardTitle}>接口地址</Text>
+            <Text style={styles.cardValueSmall}>高级</Text>
+          </View>
+          <TextInput
+            style={styles.input}
+            value={endpointInput}
+            onChangeText={setEndpointInput}
+            onEndEditing={() => updateSettings({ apiEndpoint: endpointInput })}
+            placeholder={DEFAULT_ENDPOINT}
+            placeholderTextColor="rgba(255,255,255,0.25)"
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+          />
+          <Text style={styles.cardDesc}>留空用官方地址。以后如果把请求转接到自己的服务器,填在这里。</Text>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -196,6 +323,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
   },
+  cardValueSmall: {
+    color: palette.textFaint,
+    fontSize: 11,
+    fontWeight: '700',
+  },
   cardDesc: {
     color: palette.textDim,
     fontSize: 12.5,
@@ -204,6 +336,67 @@ const styles = StyleSheet.create({
   note: {
     color: palette.warn,
     fontSize: 12,
+    fontWeight: '600',
+  },
+  keyValue: {
+    color: palette.text,
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 1,
+    fontVariant: ['tabular-nums'],
+  },
+  input: {
+    marginTop: 2,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: radius.md,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.18)',
+    color: palette.text,
+    fontSize: 14,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 2,
+  },
+  primaryBtn: {
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: radius.pill,
+    backgroundColor: palette.accent,
+  },
+  primaryBtnText: {
+    color: '#00131F',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  secondaryBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    minWidth: 92,
+    alignItems: 'center',
+  },
+  secondaryBtnText: {
+    color: palette.text,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  btnDisabled: {
+    opacity: 0.4,
+  },
+  linkText: {
+    color: palette.accent,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  testResult: {
+    fontSize: 12.5,
+    lineHeight: 19,
     fontWeight: '600',
   },
   stepperRow: {

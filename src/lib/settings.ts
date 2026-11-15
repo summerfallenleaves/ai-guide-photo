@@ -10,6 +10,8 @@ export type AppSettings = {
   autoAnalyze: boolean;
   /** 自动分析间隔(秒) */
   intervalSec: number;
+  /** DeepSeek 接口地址(留空用官方地址) */
+  apiEndpoint: string;
 };
 
 export const INTERVAL_MIN = 3;
@@ -19,6 +21,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   fastMode: true,
   autoAnalyze: true,
   intervalSec: 3,
+  apiEndpoint: '',
 };
 
 const STORAGE_KEY = 'ai-guide-photo:settings:v1';
@@ -67,6 +70,7 @@ function sanitize(input: Partial<AppSettings>): AppSettings {
     intervalSec: Number.isFinite(interval)
       ? Math.min(INTERVAL_MAX, Math.max(INTERVAL_MIN, Math.round(interval)))
       : DEFAULT_SETTINGS.intervalSec,
+    apiEndpoint: typeof input.apiEndpoint === 'string' ? input.apiEndpoint.trim() : DEFAULT_SETTINGS.apiEndpoint,
   };
 }
 

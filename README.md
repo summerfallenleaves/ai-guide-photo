@@ -28,26 +28,24 @@ src/lib/           API 客户端、类型、配色
 server/            本地代理:画面体检 + DeepSeek 视觉建议
 ```
 
+## 架构:App 直连 DeepSeek,不需要任何服务器
+
+```
+手机 App  ──HTTPS──▶  api.deepseek.com
+   │
+   └─ API Key 加密存在手机本地(Keystore / Keychain)
+```
+
+- **不需要电脑**,不需要同 Wi-Fi,不需要部署服务器
+- Key **不在安装包里**:打开 App 后到设置里填一次
+- Key 只存在设备加密存储,只出现在请求头里
+
+`server/` 目录是早期"局域网代理"方案留下的,当前**不再使用**,保留着方便以后切回
+"服务器托管 Key"的形态(App 的「接口地址」填你的服务器即可)。
+
 ## 三步跑起来
 
-### 1. 填 API Key
-
-```bash
-cp server/.env.example server/.env
-# 编辑 server/.env,填入 DEEPSEEK_API_KEY
-```
-
-> 不填也能跑,只是所有建议都会变成"本地规则"版本(只能判断明暗、对比度)。
-
-### 2. 启动本地代理
-
-```bash
-npm run server
-```
-
-看到 `✅ 已接入 DeepSeek` 就对了。默认端口 `8787`。
-
-### 3. 启动 App
+### 1. 启动 App
 
 ```bash
 npm start
@@ -65,9 +63,10 @@ npm start
 
 > 鸿蒙 NEXT 设备装不了 Expo Go(不兼容安卓 APK),真机调试只能用 Android 手机。
 
-### 4. 验证局域网是否通
+### 3. 填入 API Key
 
-手机浏览器打开 `http://<电脑IP>:8787/health`,能返回 JSON 就说明代理在局域网里可达。打不开就是防火墙或路由器 AP 隔离的问题。
+首次打开 App 会提示「还没有配置 API Key」,点「去设置」填入 `sk-...`。
+保存后点「测试连接」确认可用。Key 来自 <https://platform.deepseek.com>。
 
 ## 常见问题
 

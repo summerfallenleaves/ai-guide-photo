@@ -21,7 +21,8 @@ import { SuggestionCard } from '@/components/suggestion-card';
 import { useTilt } from '@/hooks/use-tilt';
 import { useCameraLock } from '@/hooks/use-camera-lock';
 import { useOrientation } from '@/hooks/use-orientation';
-import { analyze, API_BASE_URL } from '@/lib/api';
+import { analyze } from '@/lib/api';
+import { useApiKey } from '@/hooks/use-api-key';
 import { toAnalysisBase64 } from '@/lib/analysis-image';
 import { setLastCapture, setReviewState } from '@/lib/capture-store';
 import { liveAnalysisEnabled, thinkingOf, useSettings } from '@/lib/settings';
@@ -41,6 +42,9 @@ export default function CameraScreen() {
   const [facing, setFacing] = useState<'back' | 'front'>('back');
   const [ready, setReady] = useState(false);
   const [focused, setFocused] = useState(true);
+  /** API Key 存在设备加密存储里,保存后这里会自动更新 */
+  const apiKey = useApiKey();
+  const keyReady = !!apiKey;
   const [showGrid, setShowGrid] = useState(true);
   /** 连续失败后暂停自动分析,直到用户手动重试(不改用户设置) */
   const [paused, setPaused] = useState(false);
@@ -92,7 +96,7 @@ export default function CameraScreen() {
       // 取景建议一律用低思考强度:它每几秒就要刷一次,不能被推理拖住
       // 取景建议一律关闭思考:实测 thinking=low 仍会产生 300~800 个思维链 token、
       // 单次 3.5~8 秒,而 disabled 只要 1.6~1.8 秒。取景不能拿延迟换质量。
-      const result = await analyze(shot.base64, 'live', { thinking: 'disabled' });
+      const result = await analyze(shot.base64, 'live', { thinking: 'disabled', endpoint: settings.apiEndpoint });
       if (result.mode === 'live') {
         setSuggestion(result);
         setError(null);
@@ -106,7 +110,7 @@ export default function CameraScreen() {
       analyzeBusyRef.current = false;
       setAnalyzing(false);
     }
-  }, [ready, withCameraLock]);
+  }, [ready, withCameraLock, settings.apiEndpoint]);
 
   // 手动重试:清掉暂停状态并立刻跑一次
   const retryNow = useCallback(() => {
@@ -116,14 +120,14 @@ export default function CameraScreen() {
   }, [runLiveAnalysis]);
 
   useEffect(() => {
-    if (!liveOn || paused || !focused || !ready || !permission?.granted) return;
+    if (!liveOn || paused || !focused || !ready || !keyReady || !permission?.granted) return;
     const warmup = setTimeout(() => void runLiveAnalysis(), 700);
     const timer = setInterval(() => void runLiveAnalysis(), settings.intervalSec * 1000);
     return () => {
       clearTimeout(warmup);
       clearInterval(timer);
     };
-  }, [liveOn, paused, focused, ready, permission?.granted, runLiveAnalysis, settings.intervalSec]);
+  }, [liveOn, paused, focused, ready, keyReady, permission?.granted, runLiveAnalysis, settings.intervalSec]);
 
   const handleCapture = useCallback(async () => {
     if (!ready || captureBusyRef.current) return;
@@ -171,7 +175,10 @@ export default function CameraScreen() {
             // 只给模型用的一份缩略图,不影响相册和复盘页显示的原图
             const base64 = await toAnalysisBase64(photoUri, photoWidth, photoHeight);
             if (mySeq !== reviewSeq.current) return;
-            const result = await analyze(base64, 'capture', { thinking: thinkingOf(settings) });
+            const result = await analyze(base64, 'capture', {
+              thinking: thinkingOf(settings),
+              endpoint: settings.apiEndpoint,
+            });
             if (mySeq !== reviewSeq.current) return; // 已经又拍了一张,丢弃旧结果
             setReviewState(
               result.mode === 'capture'
@@ -215,6 +222,20 @@ export default function CameraScreen() {
             <Text style={styles.gateButtonText}>去设置里打开</Text>
           </Pressable>
         )}
+      </View>
+    );
+  }
+
+  if (!keyReady) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.gateTitle}>还没有配置 API Key</Text>
+        <Text style={styles.gateBody}>
+          Key 只会加密保存在你这台手机上,不会上传到任何服务器,也不在安装包里。
+        </Text>
+        <Pressable style={styles.gateButton} onPress={() => router.push('/settings')}>
+          <Text style={styles.gateButtonText}>去设置</Text>
+        </Pressable>
       </View>
     );
   }
@@ -321,7 +342,7 @@ export default function CameraScreen() {
               </Pressable>
             </View>
 
-            <Text style={styles.hint}>{API_BASE_URL}</Text>
+            <Text style={styles.hint}>直连 DeepSeek · 请求由本机发起</Text>
           </View>
         </SafeAreaView>
       )}
