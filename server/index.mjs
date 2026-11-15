@@ -11,6 +11,8 @@ const CONFIG = {
   timeoutMs: Number(process.env.ANALYZE_TIMEOUT_MS ?? 15000),
   // 拍后复盘要多写几句话,给宽一点
   captureTimeoutMs: Number(process.env.ANALYZE_CAPTURE_TIMEOUT_MS ?? 30000),
+  // disabled(默认) / low / high / max —— 思考模式开关
+  thinking: process.env.DEEPSEEK_THINKING?.trim() || 'disabled',
 };
 
 const MAX_BODY = 12 * 1024 * 1024;

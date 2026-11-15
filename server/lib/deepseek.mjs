@@ -60,9 +60,9 @@ export async function askVisionAndJudge({ imageBase64, mode, metrics, config }) 
     temperature: 0.4,
     max_tokens: isCapture ? 450 : 220,
     response_format: { type: 'json_object' },
-    // 取景建议是短结构化输出,不需要思维链。
-    // DeepSeek 默认开启思考模式且 effort=high,会让延迟从 ~1s 涨到 4s+,这里关掉。
-    thinking: { type: 'disabled' },
+    // 思考模式:默认关闭。取景建议要快,开着会让延迟从 ~1s 涨到 4s+。
+    // 拍后复盘不阻塞界面,可以按需打开换取更细的点评。
+    ...thinkingParams(config.thinking),
   };
 
   const timeoutMs = isCapture ? (config.captureTimeoutMs ?? config.timeoutMs) : config.timeoutMs;
@@ -120,6 +120,16 @@ export async function askVisionAndJudge({ imageBase64, mode, metrics, config }) 
     source: 'deepseek',
     usage: json?.usage ?? null,
   };
+}
+
+function thinkingParams(level) {
+  const mode = String(level ?? 'disabled').toLowerCase();
+  if (mode === 'disabled' || mode === 'off' || mode === 'none') {
+    return { thinking: { type: 'disabled' } };
+  }
+  // low / high / max
+  const effort = mode === 'low' || mode === 'high' || mode === 'max' ? mode : 'high';
+  return { thinking: { type: 'enabled' }, reasoning_effort: effort };
 }
 
 function normalize(p, isCapture) {
