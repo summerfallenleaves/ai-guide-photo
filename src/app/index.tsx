@@ -12,7 +12,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { GridOverlay } from '@/components/grid-overlay';
 import { LevelBadge } from '@/components/level-badge';
@@ -54,8 +54,7 @@ export default function CameraScreen() {
   const tilt = useTilt(focused && ready);
   const { isLandscape, toggle: toggleOrientation } = useOrientation();
   const { width: screenWidth } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
-  // 横屏右侧面板宽度:窄一点,把预览尽量留给取景
+  // 横屏右侧浮动列的宽度
   const panelWidth = Math.min(Math.max(screenWidth * 0.34, 230), 320);
 
   useFocusEffect(
@@ -197,64 +196,59 @@ export default function CameraScreen() {
 
   return (
     <View style={styles.root}>
-      {/*
-        横屏时这里是「左预览 + 右面板」的分栏;竖屏时面板不渲染,预览自动占满。
-        相机始终挂在同一个容器里,切换方向只改变尺寸,不会重建相机(不会闪黑)。
-      */}
-      <View style={[styles.stage, { paddingLeft: insets.left, paddingRight: insets.right }]}>
-        <View style={styles.cameraArea}>
-          <CameraView
-            ref={cameraRef}
-            style={StyleSheet.absoluteFill}
-            facing={facing}
-            animateShutter={false}
-            onCameraReady={() => setReady(true)}
-            onMountError={(e) => setError(`相机启动失败:${e.message}`)}
+      {/* 相机铺满整屏,横竖屏都只改叠加层的排版,不重建相机 */}
+      <CameraView
+        ref={cameraRef}
+        style={StyleSheet.absoluteFill}
+        facing={facing}
+        animateShutter={false}
+        onCameraReady={() => setReady(true)}
+        onMountError={(e) => setError(`相机启动失败:${e.message}`)}
+      />
+      <GridOverlay visible={showGrid} />
+
+      {isLandscape ? (
+        /* 横屏:右侧浮动一列,背景透明,元素各自带半透明底,和竖屏卡片是同一套视觉语言 */
+        <SafeAreaView
+          style={[styles.landscapePanel, { width: panelWidth }]}
+          edges={['top', 'bottom', 'right']}
+          pointerEvents="box-none">
+          <View style={styles.panelTopRow} pointerEvents="box-none">
+            <LevelBadge tilt={tilt} />
+            <RotateButton onPress={() => void toggleOrientation()} />
+          </View>
+
+          <SuggestionCard
+            compact
+            suggestion={suggestion}
+            analyzing={analyzing}
+            error={error}
+            autoOn={autoOn}
+            onToggleAuto={() => setAutoOn((v) => !v)}
+            onRefresh={() => void runLiveAnalysis()}
           />
-          <GridOverlay visible={showGrid} />
-        </View>
 
-        {isLandscape ? (
-          <SafeAreaView style={[styles.landscapePanel, { width: panelWidth }]} edges={['top', 'bottom']}>
-            <View style={styles.panelTopRow}>
-              <LevelBadge tilt={tilt} />
-              <RotateButton onPress={() => void toggleOrientation()} />
-            </View>
+          <View style={styles.controlsCompact} pointerEvents="box-none">
+            <Pressable style={styles.sideButton} onPress={() => setShowGrid((v) => !v)} hitSlop={10}>
+              <Text style={[styles.sideButtonText, showGrid && { color: palette.accent }]}>网格</Text>
+            </Pressable>
 
-            <SuggestionCard
-              compact
-              suggestion={suggestion}
-              analyzing={analyzing}
-              error={error}
-              autoOn={autoOn}
-              onToggleAuto={() => setAutoOn((v) => !v)}
-              onRefresh={() => void runLiveAnalysis()}
-            />
+            <Pressable
+              style={[styles.shutterCompact, capturing && { opacity: 0.6 }]}
+              onPress={() => void handleCapture()}
+              disabled={capturing || !ready}>
+              <View style={styles.shutterInnerCompact} />
+            </Pressable>
 
-            <View style={styles.controlsCompact}>
-              <Pressable style={styles.sideButton} onPress={() => setShowGrid((v) => !v)} hitSlop={10}>
-                <Text style={[styles.sideButtonText, showGrid && { color: palette.accent }]}>网格</Text>
-              </Pressable>
-
-              <Pressable
-                style={[styles.shutterCompact, capturing && { opacity: 0.6 }]}
-                onPress={() => void handleCapture()}
-                disabled={capturing || !ready}>
-                <View style={styles.shutterInnerCompact} />
-              </Pressable>
-
-              <Pressable
-                style={styles.sideButton}
-                onPress={() => setFacing((f) => (f === 'back' ? 'front' : 'back'))}
-                hitSlop={10}>
-                <Text style={styles.sideButtonText}>翻转</Text>
-              </Pressable>
-            </View>
-          </SafeAreaView>
-        ) : null}
-      </View>
-
-      {isLandscape ? null : (
+            <Pressable
+              style={styles.sideButton}
+              onPress={() => setFacing((f) => (f === 'back' ? 'front' : 'back'))}
+              hitSlop={10}>
+              <Text style={styles.sideButtonText}>翻转</Text>
+            </Pressable>
+          </View>
+        </SafeAreaView>
+      ) : (
         <SafeAreaView
           style={[StyleSheet.absoluteFill, styles.overlay]}
           edges={['top', 'bottom']}
@@ -361,23 +355,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  cameraArea: {
-    flex: 1,
-    overflow: 'hidden',
-    backgroundColor: '#000',
-  },
-  stage: {
-    flex: 1,
-    flexDirection: 'row',
-  },
   landscapePanel: {
-    backgroundColor: '#0A0A0C',
-    borderLeftWidth: StyleSheet.hairlineWidth,
-    borderLeftColor: palette.border,
-    paddingHorizontal: 12,
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 14,
     paddingVertical: 10,
     justifyContent: 'space-between',
-    gap: 8,
+    gap: 10,
   },
   panelTopRow: {
     flexDirection: 'row',
@@ -437,6 +423,10 @@ const styles = StyleSheet.create({
     color: palette.textDim,
     fontSize: 13,
     fontWeight: '600',
+    // 直接浮在取景画面上,加个阴影保证亮背景下也看得清
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   shutter: {
     width: 78,
