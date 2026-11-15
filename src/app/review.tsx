@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -12,19 +12,23 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { getLastCapture } from '@/lib/capture-store';
+import { getLastCapture, getReviewState, subscribeReviewState } from '@/lib/capture-store';
 import { saveToAlbum } from '@/lib/media';
 import { palette, radius } from '@/lib/theme';
-import type { CaptureResult } from '@/lib/types';
 
 export default function ReviewScreen() {
-  const params = useLocalSearchParams<{ uri?: string; saved?: string; payload?: string }>();
+  const params = useLocalSearchParams<{ uri?: string; saved?: string }>();
   const captured = getLastCapture();
 
   // 优先用内存里那份,路由参数只作兜底
   const photoUri = captured?.uri ?? (params.uri ? String(params.uri) : '');
   const savedParam = params.saved ? String(params.saved) : '0';
-  const payload = captured?.payload || (params.payload ? String(params.payload) : '');
+
+  // 点评是异步补上的,订阅它
+  const reviewState = useSyncExternalStore(subscribeReviewState, getReviewState);
+  const review = reviewState.status === 'done' ? reviewState.result : null;
+  const analyzing = reviewState.status === 'analyzing';
+  const reviewError = reviewState.status === 'failed' ? reviewState.error : null;
 
   const [savedState, setSavedState] = useState(captured ? captured.saved : savedParam === '1');
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -44,15 +48,6 @@ export default function ReviewScreen() {
     else setSaveError(result.error ?? '未知错误');
     setSaving(false);
   };
-
-  const review = useMemo<CaptureResult | null>(() => {
-    if (!payload) return null;
-    try {
-      return JSON.parse(payload) as CaptureResult;
-    } catch {
-      return null;
-    }
-  }, [payload]);
 
   const score = review?.score ?? null;
   const scoreColor =
@@ -78,20 +73,32 @@ export default function ReviewScreen() {
     <>
       <View style={styles.scoreRow}>
         <View style={[styles.scoreRing, { borderColor: scoreColor }]}>
-          <Text style={[styles.scoreNumber, { color: scoreColor }]}>{score ?? '—'}</Text>
-          <Text style={styles.scoreUnit}>分</Text>
+          {analyzing ? (
+            <ActivityIndicator color={palette.accent} />
+          ) : (
+            <>
+              <Text style={[styles.scoreNumber, { color: scoreColor }]}>{score ?? '—'}</Text>
+              <Text style={styles.scoreUnit}>分</Text>
+            </>
+          )}
         </View>
         <View style={styles.scoreMeta}>
-          <Text style={styles.headline}>{review?.headline ?? '这张照片已保存'}</Text>
+          <Text style={styles.headline}>
+            {analyzing
+              ? 'AI 正在点评…'
+              : (review?.headline ?? (reviewError ? '这次没拿到点评' : '这张照片已保存'))}
+          </Text>
           <View style={styles.metaPills}>
             {review?.dimLabel ? (
               <View style={styles.pill}>
                 <Text style={styles.pillText}>{review.dimLabel}</Text>
               </View>
             ) : null}
-            <View style={styles.pill}>
-              <Text style={styles.pillText}>{review?.source === 'deepseek' ? 'AI 点评' : '本地点评'}</Text>
-            </View>
+            {review ? (
+              <View style={styles.pill}>
+                <Text style={styles.pillText}>{review.source === 'deepseek' ? 'AI 点评' : '本地点评'}</Text>
+              </View>
+            ) : null}
             {savedState ? (
               <View style={styles.pill}>
                 <Text style={styles.pillText}>已存相册</Text>
@@ -113,7 +120,12 @@ export default function ReviewScreen() {
         </View>
       </View>
 
-      {review?.improvements?.length ? (
+      {analyzing ? (
+        <View style={styles.improvements}>
+          <Text style={styles.sectionTitle}>正在分析</Text>
+          <Text style={styles.emptyHint}>看构图、光线、主体和背景,大概要一两秒。照片已经存好了,你可以先看。</Text>
+        </View>
+      ) : review?.improvements?.length ? (
         <View style={styles.improvements}>
           <Text style={styles.sectionTitle}>下次这样拍</Text>
           {review.improvements.map((item, index) => (
@@ -126,7 +138,11 @@ export default function ReviewScreen() {
           ))}
         </View>
       ) : (
-        <Text style={styles.emptyHint}>这次没拿到点评,可能是网络或模型的问题。照片已经拍下来了。</Text>
+        <Text style={styles.emptyHint}>
+          {reviewError
+            ? `点评失败:${reviewError}`
+            : '这次没拿到点评,可能是网络或模型的问题。照片已经拍下来了。'}
+        </Text>
       )}
 
       <View style={styles.actions}>

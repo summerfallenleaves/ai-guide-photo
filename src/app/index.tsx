@@ -22,10 +22,10 @@ import { useTilt } from '@/hooks/use-tilt';
 import { useCameraLock } from '@/hooks/use-camera-lock';
 import { useOrientation } from '@/hooks/use-orientation';
 import { analyze, API_BASE_URL } from '@/lib/api';
-import { setLastCapture } from '@/lib/capture-store';
+import { setLastCapture, setReviewState } from '@/lib/capture-store';
 import { saveToAlbum } from '@/lib/media';
 import { palette, radius } from '@/lib/theme';
-import type { CaptureResult, LiveSuggestion } from '@/lib/types';
+import type { LiveSuggestion } from '@/lib/types';
 
 const LIVE_INTERVAL_MS = 3000;
 const MAX_CONSECUTIVE_FAILURES = 3;
@@ -48,6 +48,8 @@ export default function CameraScreen() {
   const analyzeBusyRef = useRef(false);
   const captureBusyRef = useRef(false);
   const failuresRef = useRef(0);
+  /** 每次拍照自增,用来丢弃"上一张"迟到的点评结果 */
+  const reviewSeq = useRef(0);
   const flash = useMemo(() => new Animated.Value(0), []);
   const withCameraLock = useCameraLock();
 
@@ -134,30 +136,35 @@ export default function CameraScreen() {
       const saved = saveResult.ok;
       if (!saved) console.warn('[capture] 保存相册失败:', saveResult.error);
 
-      let review: CaptureResult | null = null;
-      if (shot.base64) {
-        try {
-          const result = await analyze(shot.base64, 'capture');
-          if (result.mode === 'capture') review = result;
-        } catch (err) {
-          setError((err as Error).message);
-        }
-      }
-
-      setLastCapture({
-        uri: shot.uri,
-        saved,
-        payload: review ? JSON.stringify(review) : '',
-      });
-
+      // 照片先落地:立刻进复盘页,不让用户为了等点评而干站着
+      setLastCapture({ uri: shot.uri, saved });
+      setReviewState({ status: 'analyzing' });
       router.push({
         pathname: '/review',
-        params: {
-          uri: shot.uri,
-          saved: saved ? '1' : '0',
-          payload: review ? JSON.stringify(review) : '',
-        },
+        params: { uri: shot.uri, saved: saved ? '1' : '0' },
       });
+
+      // 点评在后台继续跑,结果推给复盘页
+      const mySeq = ++reviewSeq.current;
+      const base64 = shot.base64;
+      if (!base64) {
+        setReviewState({ status: 'failed', error: '没有拿到图像数据' });
+      } else {
+        void (async () => {
+          try {
+            const result = await analyze(base64, 'capture');
+            if (mySeq !== reviewSeq.current) return; // 已经又拍了一张,丢弃旧结果
+            setReviewState(
+              result.mode === 'capture'
+                ? { status: 'done', result }
+                : { status: 'failed', error: '服务返回了意外类型' },
+            );
+          } catch (err) {
+            if (mySeq !== reviewSeq.current) return;
+            setReviewState({ status: 'failed', error: (err as Error).message });
+          }
+        })();
+      }
     } catch (err) {
       setError((err as Error).message);
     } finally {
