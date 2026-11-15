@@ -37,7 +37,7 @@ export class AnalyzeError extends Error {
 export async function analyze(
   imageBase64: string,
   mode: 'live' | 'capture',
-  opts: { signal?: AbortSignal; timeoutMs?: number } = {},
+  opts: { signal?: AbortSignal; timeoutMs?: number; thinking?: 'low' | 'high' } = {},
 ): Promise<AnalysisResult> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), opts.timeoutMs ?? 20000);
@@ -48,7 +48,7 @@ export async function analyze(
     const res = await fetch(`${API_BASE_URL}/api/analyze`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image: imageBase64, mode }),
+      body: JSON.stringify({ image: imageBase64, mode, thinking: opts.thinking }),
       signal: controller.signal,
     });
 

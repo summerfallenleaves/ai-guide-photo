@@ -23,22 +23,26 @@ import { useCameraLock } from '@/hooks/use-camera-lock';
 import { useOrientation } from '@/hooks/use-orientation';
 import { analyze, API_BASE_URL } from '@/lib/api';
 import { setLastCapture, setReviewState } from '@/lib/capture-store';
+import { liveAnalysisEnabled, thinkingOf, useSettings } from '@/lib/settings';
 import { saveToAlbum } from '@/lib/media';
 import { palette, radius } from '@/lib/theme';
 import type { LiveSuggestion } from '@/lib/types';
 
-const LIVE_INTERVAL_MS = 3000;
 const MAX_CONSECUTIVE_FAILURES = 3;
 
 export default function CameraScreen() {
   const cameraRef = useRef<CameraView>(null);
   const [permission, requestPermission] = useCameraPermissions();
 
+  const settings = useSettings();
+  const liveOn = liveAnalysisEnabled(settings);
+
   const [facing, setFacing] = useState<'back' | 'front'>('back');
   const [ready, setReady] = useState(false);
   const [focused, setFocused] = useState(true);
   const [showGrid, setShowGrid] = useState(true);
-  const [autoOn, setAutoOn] = useState(true);
+  /** 连续失败后暂停自动分析,直到用户手动重试(不改用户设置) */
+  const [paused, setPaused] = useState(false);
 
   const [suggestion, setSuggestion] = useState<LiveSuggestion | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
@@ -84,7 +88,8 @@ export default function CameraScreen() {
       });
       if (!shot?.base64) throw new Error('抓帧失败');
 
-      const result = await analyze(shot.base64, 'live');
+      // 取景建议一律用低思考强度:它每几秒就要刷一次,不能被推理拖住
+      const result = await analyze(shot.base64, 'live', { thinking: 'low' });
       if (result.mode === 'live') {
         setSuggestion(result);
         setError(null);
@@ -93,22 +98,29 @@ export default function CameraScreen() {
     } catch (err) {
       failuresRef.current += 1;
       setError((err as Error).message);
-      if (failuresRef.current >= MAX_CONSECUTIVE_FAILURES) setAutoOn(false);
+      if (failuresRef.current >= MAX_CONSECUTIVE_FAILURES) setPaused(true);
     } finally {
       analyzeBusyRef.current = false;
       setAnalyzing(false);
     }
   }, [ready, withCameraLock]);
 
+  // 手动重试:清掉暂停状态并立刻跑一次
+  const retryNow = useCallback(() => {
+    setPaused(false);
+    failuresRef.current = 0;
+    void runLiveAnalysis();
+  }, [runLiveAnalysis]);
+
   useEffect(() => {
-    if (!autoOn || !focused || !ready || !permission?.granted) return;
+    if (!liveOn || paused || !focused || !ready || !permission?.granted) return;
     const warmup = setTimeout(() => void runLiveAnalysis(), 700);
-    const timer = setInterval(() => void runLiveAnalysis(), LIVE_INTERVAL_MS);
+    const timer = setInterval(() => void runLiveAnalysis(), settings.intervalSec * 1000);
     return () => {
       clearTimeout(warmup);
       clearInterval(timer);
     };
-  }, [autoOn, focused, ready, permission?.granted, runLiveAnalysis]);
+  }, [liveOn, paused, focused, ready, permission?.granted, runLiveAnalysis, settings.intervalSec]);
 
   const handleCapture = useCallback(async () => {
     if (!ready || captureBusyRef.current) return;
@@ -152,7 +164,7 @@ export default function CameraScreen() {
       } else {
         void (async () => {
           try {
-            const result = await analyze(base64, 'capture');
+            const result = await analyze(base64, 'capture', { thinking: thinkingOf(settings) });
             if (mySeq !== reviewSeq.current) return; // 已经又拍了一张,丢弃旧结果
             setReviewState(
               result.mode === 'capture'
@@ -171,7 +183,7 @@ export default function CameraScreen() {
       captureBusyRef.current = false;
       setCapturing(false);
     }
-  }, [flash, ready, withCameraLock]);
+  }, [flash, ready, withCameraLock, settings]);
 
   if (!permission) {
     return (
@@ -230,9 +242,10 @@ export default function CameraScreen() {
             suggestion={suggestion}
             analyzing={analyzing}
             error={error}
-            autoOn={autoOn}
-            onToggleAuto={() => setAutoOn((v) => !v)}
-            onRefresh={() => void runLiveAnalysis()}
+            liveOn={liveOn}
+            paused={paused}
+            onOpenSettings={() => router.push('/settings')}
+            onRefresh={retryNow}
           />
 
           <View style={styles.controlsCompact} pointerEvents="box-none">
@@ -276,9 +289,10 @@ export default function CameraScreen() {
               suggestion={suggestion}
               analyzing={analyzing}
               error={error}
-              autoOn={autoOn}
-              onToggleAuto={() => setAutoOn((v) => !v)}
-              onRefresh={() => void runLiveAnalysis()}
+              liveOn={liveOn}
+              paused={paused}
+              onOpenSettings={() => router.push('/settings')}
+              onRefresh={retryNow}
             />
 
             <View style={styles.controls} pointerEvents="box-none">

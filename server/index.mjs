@@ -54,6 +54,9 @@ const server = http.createServer(async (req, res) => {
     const mode = payload.mode === 'capture' ? 'capture' : 'live';
     if (!image) return sendJson(res, 400, { ok: false, error: '缺少 image' });
 
+    // 思考强度由客户端按设置传,缺省用服务端配置
+    const thinking = normalizeThinking(payload.thinking) ?? CONFIG.thinking;
+
     const base64 = image.includes(',') ? image.slice(image.indexOf(',') + 1) : image;
     let buffer;
     try {
@@ -63,7 +66,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (buffer.length < 512) return sendJson(res, 400, { ok: false, error: '图片太小' });
 
-    const hash = `${mode}:${createHash('sha1').update(buffer).digest('hex')}`;
+    const hash = `${mode}:${thinking}:${createHash('sha1').update(buffer).digest('hex')}`;
     const hit = cache.get(hash);
     if (hit && Date.now() - hit.at < CACHE_TTL) {
       return sendJson(res, 200, { ok: true, data: hit.data, meta: { cached: true, ms: Date.now() - started } });
@@ -75,7 +78,12 @@ const server = http.createServer(async (req, res) => {
     let source = 'local';
     if (CONFIG.apiKey) {
       try {
-        data = await askVisionAndJudge({ imageBase64: base64, mode, metrics: metrics ?? neutralMetrics(), config: CONFIG });
+        data = await askVisionAndJudge({
+          imageBase64: base64,
+          mode,
+          metrics: metrics ?? neutralMetrics(),
+          config: { ...CONFIG, thinking },
+        });
         source = 'deepseek';
       } catch (err) {
         console.warn('[analyze] 云端失败,退回本地:', err.message);
@@ -100,6 +108,11 @@ const server = http.createServer(async (req, res) => {
 
   sendJson(res, 404, { ok: false, error: 'not found' });
 });
+
+function normalizeThinking(value) {
+  const v = typeof value === 'string' ? value.toLowerCase() : '';
+  return ['disabled', 'low', 'high', 'max'].includes(v) ? v : null;
+}
 
 function fallback(partial, mode, metrics) {
   const local = metrics ? localSuggestion(metrics) : {

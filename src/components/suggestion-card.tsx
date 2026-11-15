@@ -7,9 +7,12 @@ type Props = {
   suggestion: LiveSuggestion | null;
   analyzing: boolean;
   error: string | null;
-  autoOn: boolean;
-  onToggleAuto: () => void;
+  /** 取景自动分析是否生效(快速模式 + 自动分析都开启) */
+  liveOn: boolean;
+  /** 连续失败后暂停了自动分析 */
+  paused: boolean;
   onRefresh: () => void;
+  onOpenSettings: () => void;
   /** 横屏空间紧张时用:去掉理由行、压缩字号与留白 */
   compact?: boolean;
 };
@@ -18,9 +21,10 @@ export function SuggestionCard({
   suggestion,
   analyzing,
   error,
-  autoOn,
-  onToggleAuto,
+  liveOn,
+  paused,
   onRefresh,
+  onOpenSettings,
   compact = false,
 }: Props) {
   if (error) {
@@ -28,9 +32,14 @@ export function SuggestionCard({
       <View style={[styles.card, compact && styles.cardCompact, styles.errorCard]}>
         <Text style={styles.errorTitle}>暂时给不出建议</Text>
         <Text style={styles.errorBody}>{error}</Text>
-        <Pressable onPress={onRefresh} style={styles.retry}>
-          <Text style={styles.retryText}>重试</Text>
-        </Pressable>
+        <View style={styles.errorActions}>
+          <Pressable onPress={onRefresh} style={styles.retry}>
+            <Text style={styles.retryText}>重试</Text>
+          </Pressable>
+          <Pressable onPress={onOpenSettings} style={styles.footerBtn} hitSlop={8}>
+            <Text style={styles.footerBtnText}>设置</Text>
+          </Pressable>
+        </View>
       </View>
     );
   }
@@ -38,9 +47,17 @@ export function SuggestionCard({
   if (!suggestion) {
     return (
       <View style={[styles.card, compact && styles.cardCompact]}>
-        <Text style={styles.placeholderTitle}>{analyzing ? '正在看画面…' : '把镜头对准想拍的东西'}</Text>
+        <Text style={styles.placeholderTitle}>
+          {!liveOn ? '自动分析已关闭' : paused ? '自动分析暂停了' : analyzing ? '正在看画面…' : '把镜头对准想拍的东西'}
+        </Text>
         <Text style={styles.placeholderBody}>
-          {compact ? '每 3 秒看一次画面。' : '我会每 3 秒看一眼取景画面,给你一条最值得改的建议。'}
+          {!liveOn
+            ? '取景时不再给建议,按快门后照常点评。想恢复就在设置里打开「自动分析」。'
+            : paused
+              ? '连续几次没连上代理,已经暂停。点「换一条」重试。'
+              : compact
+                ? '每几秒看一次画面。'
+                : '我会定时看一眼取景画面,给你一条最值得改的建议。'}
         </Text>
       </View>
     );
@@ -64,10 +81,8 @@ export function SuggestionCard({
       {!compact && suggestion.reason ? <Text style={styles.reason}>{suggestion.reason}</Text> : null}
 
       <View style={styles.footer}>
-        <Pressable onPress={onToggleAuto} style={styles.footerBtn} hitSlop={8}>
-          <Text style={[styles.footerBtnText, autoOn && { color: palette.accent }]}>
-            {autoOn ? '自动分析 开' : '自动分析 关'}
-          </Text>
+        <Pressable onPress={onOpenSettings} style={styles.footerBtn} hitSlop={8}>
+          <Text style={styles.footerBtnText}>设置</Text>
         </Pressable>
         <Pressable onPress={onRefresh} style={styles.footerBtn} hitSlop={8}>
           <Text style={styles.footerBtnText}>换一条 ↻</Text>
@@ -208,9 +223,14 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     lineHeight: 19,
   },
+  errorActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginTop: 4,
+  },
   retry: {
     alignSelf: 'flex-start',
-    marginTop: 4,
     paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: radius.pill,
