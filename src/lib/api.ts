@@ -37,7 +37,7 @@ export class AnalyzeError extends Error {
 export async function analyze(
   imageBase64: string,
   mode: 'live' | 'capture',
-  opts: { signal?: AbortSignal; timeoutMs?: number; thinking?: 'low' | 'high' } = {},
+  opts: { signal?: AbortSignal; timeoutMs?: number; thinking?: 'disabled' | 'low' | 'high' } = {},
 ): Promise<AnalysisResult> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), opts.timeoutMs ?? 20000);

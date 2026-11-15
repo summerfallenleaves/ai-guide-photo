@@ -58,7 +58,7 @@ export async function askVisionAndJudge({ imageBase64, mode, metrics, config }) 
       },
     ],
     temperature: 0.4,
-    max_tokens: isCapture ? 450 : 220,
+    max_tokens: pickMaxTokens(config.thinking, isCapture),
     response_format: { type: 'json_object' },
     // 思考模式:默认关闭。取景建议要快,开着会让延迟从 ~1s 涨到 4s+。
     // 拍后复盘不阻塞界面,可以按需打开换取更细的点评。
@@ -110,16 +110,49 @@ export async function askVisionAndJudge({ imageBase64, mode, metrics, config }) 
     throw new Error(`DeepSeek ${res.status}: ${text.slice(0, 200)}`);
   }
 
-  const json = await res.json();
-  const raw = json?.choices?.[0]?.message?.content ?? '';
+  let json = await res.json();
+  let raw = json?.choices?.[0]?.message?.content ?? '';
+
+  // 思考模式会让思维链也计入 max_tokens。预算不够时 finish_reason=length、
+  // 正文为空,这里翻倍重试一次,而不是直接失败退成本地规则。
+  if (json?.choices?.[0]?.finish_reason === 'length') {
+    const before = body.max_tokens;
+    body.max_tokens = Math.min(before * 2, 8000);
+    console.warn(`[deepseek] 输出被截断(max_tokens=${before}),提高到 ${body.max_tokens} 重试`);
+    const retryRes = await call(body);
+    if (!retryRes.ok) {
+      const text = await retryRes.text().catch(() => '');
+      throw new Error(`DeepSeek ${retryRes.status}: ${text.slice(0, 200)}`);
+    }
+    json = await retryRes.json();
+    raw = json?.choices?.[0]?.message?.content ?? '';
+  }
+
   const parsed = parseJsonLoose(raw);
-  if (!parsed) throw new Error(`无法解析模型返回: ${String(raw).slice(0, 200)}`);
+  if (!parsed) {
+    const reason = json?.choices?.[0]?.finish_reason;
+    throw new Error(`无法解析模型返回(finish=${reason}): ${String(raw).slice(0, 160)}`);
+  }
 
   return {
     ...normalize(parsed, isCapture),
     source: 'deepseek',
     usage: json?.usage ?? null,
   };
+}
+
+/**
+ * 思考模式的思维链同样计入 max_tokens。
+ * 预算给小了会出现"推理把额度吃光、正文为空"的情况,所以按思考强度分档。
+ */
+function pickMaxTokens(thinking, isCapture) {
+  const mode = String(thinking ?? 'disabled').toLowerCase();
+  if (mode === 'disabled' || mode === 'off' || mode === 'none') {
+    return isCapture ? 300 : 200;
+  }
+  if (mode === 'max') return 4000;
+  if (mode === 'low') return 1200;
+  return 2500; // high
 }
 
 function thinkingParams(level) {

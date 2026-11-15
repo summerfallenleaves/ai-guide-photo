@@ -89,7 +89,9 @@ export default function CameraScreen() {
       if (!shot?.base64) throw new Error('抓帧失败');
 
       // 取景建议一律用低思考强度:它每几秒就要刷一次,不能被推理拖住
-      const result = await analyze(shot.base64, 'live', { thinking: 'low' });
+      // 取景建议一律关闭思考:实测 thinking=low 仍会产生 300~800 个思维链 token、
+      // 单次 3.5~8 秒,而 disabled 只要 1.6~1.8 秒。取景不能拿延迟换质量。
+      const result = await analyze(shot.base64, 'live', { thinking: 'disabled' });
       if (result.mode === 'live') {
         setSuggestion(result);
         setError(null);
