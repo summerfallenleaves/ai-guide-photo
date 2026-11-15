@@ -9,6 +9,7 @@ import { GridOverlay } from '@/components/grid-overlay';
 import { LevelBadge } from '@/components/level-badge';
 import { SuggestionCard } from '@/components/suggestion-card';
 import { useTilt } from '@/hooks/use-tilt';
+import { useCameraLock } from '@/hooks/use-camera-lock';
 import { analyze, API_BASE_URL } from '@/lib/api';
 import { setLastCapture } from '@/lib/capture-store';
 import { saveToAlbum } from '@/lib/media';
@@ -33,9 +34,11 @@ export default function CameraScreen() {
   const [error, setError] = useState<string | null>(null);
   const [capturing, setCapturing] = useState(false);
 
-  const busyRef = useRef(false);
+  const analyzeBusyRef = useRef(false);
+  const captureBusyRef = useRef(false);
   const failuresRef = useRef(0);
   const flash = useMemo(() => new Animated.Value(0), []);
+  const withCameraLock = useCameraLock();
 
   const tilt = useTilt(focused && ready);
 
@@ -47,16 +50,20 @@ export default function CameraScreen() {
   );
 
   const runLiveAnalysis = useCallback(async () => {
-    const cam = cameraRef.current;
-    if (!cam || busyRef.current || !ready) return;
+    // 正在拍照时不抓帧,避免打扰
+    if (!ready || analyzeBusyRef.current || captureBusyRef.current) return;
 
-    busyRef.current = true;
+    analyzeBusyRef.current = true;
     setAnalyzing(true);
     try {
-      const shot = await cam.takePictureAsync({
-        quality: 0.3,
-        base64: true,
-        shutterSound: false,
+      const shot = await withCameraLock(() => {
+        const cam = cameraRef.current;
+        if (!cam) throw new Error('相机还没准备好');
+        return cam.takePictureAsync({
+          quality: 0.3,
+          base64: true,
+          shutterSound: false,
+        });
       });
       if (!shot?.base64) throw new Error('抓帧失败');
 
@@ -71,10 +78,10 @@ export default function CameraScreen() {
       setError((err as Error).message);
       if (failuresRef.current >= MAX_CONSECUTIVE_FAILURES) setAutoOn(false);
     } finally {
-      busyRef.current = false;
+      analyzeBusyRef.current = false;
       setAnalyzing(false);
     }
-  }, [ready]);
+  }, [ready, withCameraLock]);
 
   useEffect(() => {
     if (!autoOn || !focused || !ready || !permission?.granted) return;
@@ -87,10 +94,9 @@ export default function CameraScreen() {
   }, [autoOn, focused, ready, permission?.granted, runLiveAnalysis]);
 
   const handleCapture = useCallback(async () => {
-    const cam = cameraRef.current;
-    if (!cam || busyRef.current || !ready) return;
+    if (!ready || captureBusyRef.current) return;
 
-    busyRef.current = true;
+    captureBusyRef.current = true;
     setCapturing(true);
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
@@ -100,7 +106,12 @@ export default function CameraScreen() {
     ]).start();
 
     try {
-      const shot = await cam.takePictureAsync({ quality: 0.7, base64: true });
+      // 如果实时分析正在抓帧,这里最多等它那 200ms,不等网络
+      const shot = await withCameraLock(() => {
+        const cam = cameraRef.current;
+        if (!cam) throw new Error('相机还没准备好');
+        return cam.takePictureAsync({ quality: 0.7, base64: true });
+      });
       if (!shot?.uri) throw new Error('拍照失败');
 
       // 先直接写相册(Android 13+ 不需要权限),失败才申请
@@ -135,10 +146,10 @@ export default function CameraScreen() {
     } catch (err) {
       setError((err as Error).message);
     } finally {
-      busyRef.current = false;
+      captureBusyRef.current = false;
       setCapturing(false);
     }
-  }, [flash, ready]);
+  }, [flash, ready, withCameraLock]);
 
   if (!permission) {
     return (
