@@ -1,4 +1,3 @@
-import { Asset, usePermissions as useMediaPermissions } from 'expo-media-library';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
@@ -12,6 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { saveToAlbum } from '@/lib/media';
 import { palette, radius } from '@/lib/theme';
 import type { CaptureResult } from '@/lib/types';
 import { getLastCapture } from '@/lib/capture-store';
@@ -25,10 +25,6 @@ export default function ReviewScreen() {
   const savedParam = params.saved ? String(params.saved) : '0';
   const payload = captured?.payload || (params.payload ? String(params.payload) : '');
 
-  const [mediaPermission, requestMediaPermission] = useMediaPermissions({
-    writeOnly: true,
-    granularPermissions: ['photo'],
-  });
   const [savedState, setSavedState] = useState(captured ? captured.saved : savedParam === '1');
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -38,20 +34,10 @@ export default function ReviewScreen() {
     if (!photoUri || saving) return;
     setSaving(true);
     setSaveError(null);
-    try {
-      try {
-        await Asset.create(photoUri);
-      } catch {
-        const res = mediaPermission?.granted ? { granted: true } : await requestMediaPermission();
-        if (!res.granted) throw new Error('相册权限被拒绝,请到系统设置里开启');
-        await Asset.create(photoUri);
-      }
-      setSavedState(true);
-    } catch (err) {
-      setSaveError((err as Error).message);
-    } finally {
-      setSaving(false);
-    }
+    const result = await saveToAlbum(photoUri);
+    if (result.ok) setSavedState(true);
+    else setSaveError(result.error ?? '未知错误');
+    setSaving(false);
   };
 
   const review = useMemo<CaptureResult | null>(() => {

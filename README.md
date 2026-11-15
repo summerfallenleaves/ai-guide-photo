@@ -84,6 +84,11 @@ npm start
 **拍的照只有 70% 画质?**  
 MVP 为了同时拿到"存相册的文件"和"送去分析的 base64",用了一次拍摄、质量 0.7。后续拆成两次拍摄可恢复原画质。
 
+**控制台一直报 `getPermissionsAsync has been rejected`?**  
+这是 **Expo Go 的已知限制**,不是本项目的 bug:Android 上 Expo Go 不允许查询相册权限。代码里已完全不再调用 `getPermissionsAsync` / `usePermissions`,改为"直接写入,失败才申请"。
+
+写入本身是可用的(实测能存进系统相册)。如果以后需要读相册、建相册等完整能力,必须做 development build——Expo Go 做不到。
+
 **建议出得慢、或者总是退回"本地"?**  
 DeepSeek 的 `deepseek-flash` **默认开启思考模式且 effort=high**,会让一次调用从 ~1s 涨到 4s+,很容易撞上超时。代码里已显式传 `thinking: { type: "disabled" }`——取景建议是短结构化输出,不需要思维链。
 

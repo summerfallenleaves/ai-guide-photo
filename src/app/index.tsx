@@ -1,6 +1,5 @@
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
-import { Asset, usePermissions as useMediaPermissions } from 'expo-media-library';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -12,6 +11,7 @@ import { SuggestionCard } from '@/components/suggestion-card';
 import { useTilt } from '@/hooks/use-tilt';
 import { analyze, API_BASE_URL } from '@/lib/api';
 import { setLastCapture } from '@/lib/capture-store';
+import { saveToAlbum } from '@/lib/media';
 import { palette, radius } from '@/lib/theme';
 import type { CaptureResult, LiveSuggestion } from '@/lib/types';
 
@@ -21,10 +21,6 @@ const MAX_CONSECUTIVE_FAILURES = 3;
 export default function CameraScreen() {
   const cameraRef = useRef<CameraView>(null);
   const [permission, requestPermission] = useCameraPermissions();
-  const [mediaPermission, requestMediaPermission] = useMediaPermissions({
-    writeOnly: true,
-    granularPermissions: ['photo'],
-  });
 
   const [facing, setFacing] = useState<'back' | 'front'>('back');
   const [ready, setReady] = useState(false);
@@ -90,12 +86,6 @@ export default function CameraScreen() {
     };
   }, [autoOn, focused, ready, permission?.granted, runLiveAnalysis]);
 
-  const ensureMediaPermission = useCallback(async () => {
-    if (mediaPermission?.granted) return true;
-    const res = await requestMediaPermission();
-    return res.granted;
-  }, [mediaPermission?.granted, requestMediaPermission]);
-
   const handleCapture = useCallback(async () => {
     const cam = cameraRef.current;
     if (!cam || busyRef.current || !ready) return;
@@ -113,22 +103,10 @@ export default function CameraScreen() {
       const shot = await cam.takePictureAsync({ quality: 0.7, base64: true });
       if (!shot?.uri) throw new Error('拍照失败');
 
-      // Android 13+ 写相册其实不需要运行时权限,先直接写;
-      // 失败了再申请权限重试(兼容旧系统 / iOS)
-      let saved = false;
-      try {
-        await Asset.create(shot.uri);
-        saved = true;
-      } catch (firstErr) {
-        try {
-          if (await ensureMediaPermission()) {
-            await Asset.create(shot.uri);
-            saved = true;
-          }
-        } catch (err) {
-          console.warn('[capture] 保存相册失败:', firstErr, err);
-        }
-      }
+      // 先直接写相册(Android 13+ 不需要权限),失败才申请
+      const saveResult = await saveToAlbum(shot.uri);
+      const saved = saveResult.ok;
+      if (!saved) console.warn('[capture] 保存相册失败:', saveResult.error);
 
       let review: CaptureResult | null = null;
       if (shot.base64) {
@@ -160,7 +138,7 @@ export default function CameraScreen() {
       busyRef.current = false;
       setCapturing(false);
     }
-  }, [flash, ready, ensureMediaPermission]);
+  }, [flash, ready]);
 
   if (!permission) {
     return (
