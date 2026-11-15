@@ -10,12 +10,22 @@ type Props = {
   autoOn: boolean;
   onToggleAuto: () => void;
   onRefresh: () => void;
+  /** 横屏空间紧张时用:去掉理由行、压缩字号与留白 */
+  compact?: boolean;
 };
 
-export function SuggestionCard({ suggestion, analyzing, error, autoOn, onToggleAuto, onRefresh }: Props) {
+export function SuggestionCard({
+  suggestion,
+  analyzing,
+  error,
+  autoOn,
+  onToggleAuto,
+  onRefresh,
+  compact = false,
+}: Props) {
   if (error) {
     return (
-      <View style={[styles.card, styles.errorCard]}>
+      <View style={[styles.card, compact && styles.cardCompact, styles.errorCard]}>
         <Text style={styles.errorTitle}>暂时给不出建议</Text>
         <Text style={styles.errorBody}>{error}</Text>
         <Pressable onPress={onRefresh} style={styles.retry}>
@@ -27,15 +37,17 @@ export function SuggestionCard({ suggestion, analyzing, error, autoOn, onToggleA
 
   if (!suggestion) {
     return (
-      <View style={styles.card}>
+      <View style={[styles.card, compact && styles.cardCompact]}>
         <Text style={styles.placeholderTitle}>{analyzing ? '正在看画面…' : '把镜头对准想拍的东西'}</Text>
-        <Text style={styles.placeholderBody}>我会每 3 秒看一眼取景画面,给你一条最值得改的建议。</Text>
+        <Text style={styles.placeholderBody}>
+          {compact ? '每 3 秒看一次画面。' : '我会每 3 秒看一眼取景画面,给你一条最值得改的建议。'}
+        </Text>
       </View>
     );
   }
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, compact && styles.cardCompact]}>
       <View style={styles.headerRow}>
         <View style={styles.dimTag}>
           <Text style={styles.dimText}>{suggestion.dimLabel}</Text>
@@ -47,9 +59,9 @@ export function SuggestionCard({ suggestion, analyzing, error, autoOn, onToggleA
         </View>
       </View>
 
-      <Text style={styles.headline}>{suggestion.headline}</Text>
-      <Text style={styles.action}>{suggestion.action}</Text>
-      {suggestion.reason ? <Text style={styles.reason}>{suggestion.reason}</Text> : null}
+      <Text style={[styles.headline, compact && styles.headlineCompact]}>{suggestion.headline}</Text>
+      <Text style={[styles.action, compact && styles.actionCompact]}>{suggestion.action}</Text>
+      {!compact && suggestion.reason ? <Text style={styles.reason}>{suggestion.reason}</Text> : null}
 
       <View style={styles.footer}>
         <Pressable onPress={onToggleAuto} style={styles.footerBtn} hitSlop={8}>
@@ -88,6 +100,18 @@ const styles = StyleSheet.create({
   },
   errorCard: {
     borderColor: 'rgba(248,113,113,0.45)',
+  },
+  cardCompact: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 4,
+  },
+  headlineCompact: {
+    fontSize: 16,
+  },
+  actionCompact: {
+    fontSize: 13.5,
+    lineHeight: 20,
   },
   headerRow: {
     flexDirection: 'row',

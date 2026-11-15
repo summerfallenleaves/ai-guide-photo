@@ -7,9 +7,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { GridOverlay } from '@/components/grid-overlay';
 import { LevelBadge } from '@/components/level-badge';
+import { RotateButton } from '@/components/rotate-button';
 import { SuggestionCard } from '@/components/suggestion-card';
 import { useTilt } from '@/hooks/use-tilt';
 import { useCameraLock } from '@/hooks/use-camera-lock';
+import { useOrientation } from '@/hooks/use-orientation';
 import { analyze, API_BASE_URL } from '@/lib/api';
 import { setLastCapture } from '@/lib/capture-store';
 import { saveToAlbum } from '@/lib/media';
@@ -41,6 +43,7 @@ export default function CameraScreen() {
   const withCameraLock = useCameraLock();
 
   const tilt = useTilt(focused && ready);
+  const { isLandscape, toggle: toggleOrientation } = useOrientation();
 
   useFocusEffect(
     useCallback(() => {
@@ -192,48 +195,93 @@ export default function CameraScreen() {
 
       <GridOverlay visible={showGrid} />
 
-      <SafeAreaView style={styles.overlay} edges={['top', 'bottom']} pointerEvents="box-none">
-        <View style={styles.topRow} pointerEvents="box-none">
-          <View style={styles.brand}>
-            <Text style={styles.brandText}>AI 拍照引导</Text>
-            <Text style={styles.brandSub}>长按快门可连续拍摄</Text>
-          </View>
-          <LevelBadge tilt={tilt} />
+      {isLandscape ? (
+        <View style={styles.landscapeRow} pointerEvents="box-none">
+          <View style={styles.landscapeSpacer} pointerEvents="none" />
+          <SafeAreaView style={styles.landscapePanel} edges={['top', 'bottom', 'right']}>
+            <View style={styles.panelTopRow}>
+              <LevelBadge tilt={tilt} />
+              <RotateButton onPress={() => void toggleOrientation()} />
+            </View>
+
+            <SuggestionCard
+              compact
+              suggestion={suggestion}
+              analyzing={analyzing}
+              error={error}
+              autoOn={autoOn}
+              onToggleAuto={() => setAutoOn((v) => !v)}
+              onRefresh={() => void runLiveAnalysis()}
+            />
+
+            <View style={styles.controlsCompact}>
+              <Pressable style={styles.sideButton} onPress={() => setShowGrid((v) => !v)} hitSlop={10}>
+                <Text style={[styles.sideButtonText, showGrid && { color: palette.accent }]}>网格</Text>
+              </Pressable>
+
+              <Pressable
+                style={[styles.shutterCompact, capturing && { opacity: 0.6 }]}
+                onPress={() => void handleCapture()}
+                disabled={capturing || !ready}>
+                <View style={styles.shutterInnerCompact} />
+              </Pressable>
+
+              <Pressable
+                style={styles.sideButton}
+                onPress={() => setFacing((f) => (f === 'back' ? 'front' : 'back'))}
+                hitSlop={10}>
+                <Text style={styles.sideButtonText}>翻转</Text>
+              </Pressable>
+            </View>
+          </SafeAreaView>
         </View>
-
-        <View style={styles.bottomBlock} pointerEvents="box-none">
-          <SuggestionCard
-            suggestion={suggestion}
-            analyzing={analyzing}
-            error={error}
-            autoOn={autoOn}
-            onToggleAuto={() => setAutoOn((v) => !v)}
-            onRefresh={() => void runLiveAnalysis()}
-          />
-
-          <View style={styles.controls} pointerEvents="box-none">
-            <Pressable style={styles.sideButton} onPress={() => setShowGrid((v) => !v)} hitSlop={10}>
-              <Text style={[styles.sideButtonText, showGrid && { color: palette.accent }]}>网格</Text>
-            </Pressable>
-
-            <Pressable
-              style={[styles.shutter, capturing && { opacity: 0.6 }]}
-              onPress={() => void handleCapture()}
-              disabled={capturing || !ready}>
-              <View style={styles.shutterInner} />
-            </Pressable>
-
-            <Pressable
-              style={styles.sideButton}
-              onPress={() => setFacing((f) => (f === 'back' ? 'front' : 'back'))}
-              hitSlop={10}>
-              <Text style={styles.sideButtonText}>翻转</Text>
-            </Pressable>
+      ) : (
+        <SafeAreaView style={styles.overlay} edges={['top', 'bottom']} pointerEvents="box-none">
+          <View style={styles.topRow} pointerEvents="box-none">
+            <View style={styles.brand}>
+              <Text style={styles.brandText}>AI 拍照引导</Text>
+              <Text style={styles.brandSub}>长按快门可连续拍摄</Text>
+            </View>
+            <View style={styles.topRight}>
+              <LevelBadge tilt={tilt} />
+              <RotateButton onPress={() => void toggleOrientation()} />
+            </View>
           </View>
 
-          <Text style={styles.hint}>{API_BASE_URL}</Text>
-        </View>
-      </SafeAreaView>
+          <View style={styles.bottomBlock} pointerEvents="box-none">
+            <SuggestionCard
+              suggestion={suggestion}
+              analyzing={analyzing}
+              error={error}
+              autoOn={autoOn}
+              onToggleAuto={() => setAutoOn((v) => !v)}
+              onRefresh={() => void runLiveAnalysis()}
+            />
+
+            <View style={styles.controls} pointerEvents="box-none">
+              <Pressable style={styles.sideButton} onPress={() => setShowGrid((v) => !v)} hitSlop={10}>
+                <Text style={[styles.sideButtonText, showGrid && { color: palette.accent }]}>网格</Text>
+              </Pressable>
+
+              <Pressable
+                style={[styles.shutter, capturing && { opacity: 0.6 }]}
+                onPress={() => void handleCapture()}
+                disabled={capturing || !ready}>
+                <View style={styles.shutterInner} />
+              </Pressable>
+
+              <Pressable
+                style={styles.sideButton}
+                onPress={() => setFacing((f) => (f === 'back' ? 'front' : 'back'))}
+                hitSlop={10}>
+                <Text style={styles.sideButtonText}>翻转</Text>
+              </Pressable>
+            </View>
+
+            <Text style={styles.hint}>{API_BASE_URL}</Text>
+          </View>
+        </SafeAreaView>
+      )}
 
       <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.flash, { opacity: flash }]} />
     </View>
@@ -286,6 +334,60 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     paddingTop: 8,
+  },
+  topRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  landscapeRow: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: 'row',
+  },
+  landscapeSpacer: {
+    flex: 1,
+  },
+  landscapePanel: {
+    width: '42%',
+    minWidth: 260,
+    maxWidth: 380,
+    backgroundColor: '#0A0A0C',
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: palette.border,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  panelTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  controlsCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 4,
+  },
+  shutterCompact: {
+    width: 62,
+    height: 62,
+    borderRadius: 31,
+    borderWidth: 3,
+    borderColor: 'rgba(255,255,255,0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shutterInnerCompact: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#FFFFFF',
   },
   brand: {
     gap: 2,
