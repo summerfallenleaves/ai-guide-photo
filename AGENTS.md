@@ -127,8 +127,8 @@ Expo 每个 SDK 版本都有破坏性改动,记忆里的 API 很可能已经改�
 
 - API Key **不在安装包里**,首次使用在设置页填入
 - 任何"把 Key 写进代码/打包进 APK"的做法都是错的
-- `server/` 目录是早期"局域网代理"方案的遗留,**当前不使用**,保留是为了以后能做"服务器托管 Key"的形态
-  (设置页的「接口地址」填自己的服务器即可切换)
+- 早期还有一个局域网代理(`server/`),已在 v1.2.1 清理删除;git 历史里仍可找回。
+  若以后要做"服务器托管 Key",把设置页的「接口地址」指向自己的服务即可
 
 ### 4.2 状态分布
 
@@ -199,7 +199,7 @@ Expo 每个 SDK 版本都有破坏性改动,记忆里的 API 很可能已经改�
 | 方案 | 结果 |
 | --- | --- |
 | `expo-camera` | CameraX 高层封装,**不暴露任何曝光控制**,只能缩放/闪光 |
-| `react-native-vision-camera` 5.x | 能编译,但 nitro 桥在 RN 0.88 上属性全返回默认值(设备名 `CameraDevice`、ISO 恒为 0),**运行时不可用** |
+| `react-native-vision-camera` 5.x | 能编译,但 nitro 桥在 RN 0.88 上属性全返回默认值(设备名 `CameraDevice`、ISO 恒为 0),**运行时不可用**(已从依赖中移除) |
 | **自研 Camera2**(当前) | 完全可控:手动 ISO / 快门 / 对焦 / 白平衡全部验证通过 |
 
 设备能力:该机为 `LEVEL_3`,支持 `MANUAL_SENSOR` / `MANUAL_POST_PROCESSING`,
@@ -386,8 +386,8 @@ npx tsc --noEmit && npx eslint src --ext .ts,.tsx   # 先过类型和 lint
 
 ## 十、已知遗留
 
-- `expo-image` 依赖已不再使用(复盘页换成了 RN 原生 `Image`),可移除
-- `expo-camera` 现在只用于申请相机权限,相机本体已自研
+- `expo-camera` / `expo-image` 已移除;相机权限改用 RN 内置 `PermissionsAndroid`,
+  见 `src/hooks/use-camera-permission.ts`
 - 色温转 RGB 增益用的是普朗克黑体近似,白平衡可能偏色过头,需要按真机再标定
 - AI 几乎总会给出 `params`,很少出现"照片很好、不给参数"的情况
 - `server/` 是旧代理方案,未删除,当前不参与运行

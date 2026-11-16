@@ -23,57 +23,6 @@ export type PhotoMeta = {
   device?: string;
 };
 
-function pick(raw: Record<string, unknown>, keys: string[]): unknown {
-  for (const k of keys) {
-    const v = raw[k];
-    if (v !== undefined && v !== null && v !== '') return v;
-  }
-  return undefined;
-}
-
-function toNumber(v: unknown): number | undefined {
-  if (typeof v === 'number') return Number.isFinite(v) ? v : undefined;
-  if (typeof v === 'string') {
-    const s = v.trim();
-    // 可能是 "1/60" 这样的分数
-    const frac = s.match(/^(\d+(?:\.\d+)?)\/(\d+(?:\.\d+)?)$/);
-    if (frac) {
-      const n = Number(frac[1]) / Number(frac[2]);
-      return Number.isFinite(n) ? n : undefined;
-    }
-    const n = Number(s);
-    return Number.isFinite(n) ? n : undefined;
-  }
-  if (Array.isArray(v) && v.length > 0) return toNumber(v[0]);
-  return undefined;
-}
-
-function toText(v: unknown): string | undefined {
-  return typeof v === 'string' && v.trim() ? v.trim() : undefined;
-}
-
-export function extractPhotoMeta(exif: unknown): PhotoMeta | null {
-  if (!exif || typeof exif !== 'object') return null;
-  const raw = exif as Record<string, unknown>;
-
-  const meta: PhotoMeta = {
-    focalLength35: toNumber(pick(raw, ['FocalLengthIn35mmFilm', 'FocalLenIn35mmFilm'])),
-    focalLength: toNumber(pick(raw, ['FocalLength'])),
-    fNumber: toNumber(pick(raw, ['FNumber', 'ApertureValue'])),
-    iso: toNumber(pick(raw, ['ISOSpeedRatings', 'PhotographicSensitivity', 'ISO'])),
-    exposureTime: toNumber(pick(raw, ['ExposureTime'])),
-    lensModel: toText(pick(raw, ['LensModel', 'LensMake'])),
-    device: toText(pick(raw, ['Model'])),
-  };
-
-  const flash = toNumber(pick(raw, ['Flash']));
-  if (flash !== undefined) meta.flashFired = (flash & 1) === 1;
-
-  // 一个有用的字段都没有就当没拿到
-  const hasAny = Object.values(meta).some((v) => v !== undefined);
-  return hasAny ? meta : null;
-}
-
 export function formatExposure(t: number): string {
   if (t <= 0) return '未知';
   if (t >= 1) return `${Number(t.toFixed(1))}s`;

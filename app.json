@@ -2,7 +2,7 @@
   "expo": {
     "name": "AI 拍照引导",
     "slug": "ai-guide-photograph",
-    "version": "1.2.0",
+    "version": "1.2.1",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "aiguide",
@@ -29,7 +29,7 @@
       "permissions": [
         "android.permission.CAMERA"
       ],
-      "versionCode": 10200
+      "versionCode": 10201
     },
     "web": {
       "output": "single",
@@ -37,15 +37,6 @@
     },
     "plugins": [
       "expo-router",
-      [
-        "expo-camera",
-        {
-          "cameraPermission": "需要相机权限,用来实时分析取景画面并给出拍摄建议。",
-          "microphonePermission": "本项目不使用麦克风。",
-          "recordAudioAndroid": false,
-          "barcodeScannerEnabled": false
-        }
-      ],
       [
         "expo-media-library",
         {

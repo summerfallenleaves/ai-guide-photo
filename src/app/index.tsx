@@ -1,4 +1,4 @@
-import { useCameraPermissions } from 'expo-camera';
+
 import * as Haptics from 'expo-haptics';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -22,6 +22,7 @@ import { useTilt } from '@/hooks/use-tilt';
 import { useOrientation } from '@/hooks/use-orientation';
 import { analyze } from '@/lib/api';
 import { useApiKey } from '@/hooks/use-api-key';
+import { useCameraPermission } from '@/hooks/use-camera-permission';
 import {
   addErrorListener,
   formatShutterNs,
@@ -47,7 +48,7 @@ import { palette, radius } from '@/lib/theme';
 const MAX_CONSECUTIVE_FAILURES = 3;
 
 export default function CameraScreen() {
-  const [permission, requestPermission] = useCameraPermissions();
+  const permission = useCameraPermission();
 
   const settings = useSettings();
   const liveOn = liveAnalysisEnabled(settings);
@@ -244,14 +245,14 @@ export default function CameraScreen() {
   }, [runLiveAnalysis]);
 
   useEffect(() => {
-    if (!liveOn || paused || !focused || !ready || !keyReady || !permission?.granted) return;
+    if (!liveOn || paused || !focused || !ready || !keyReady || !permission.granted) return;
     const warmup = setTimeout(() => void runLiveAnalysis(), 700);
     const timer = setInterval(() => void runLiveAnalysis(), settings.intervalSec * 1000);
     return () => {
       clearTimeout(warmup);
       clearInterval(timer);
     };
-  }, [liveOn, paused, focused, ready, keyReady, permission?.granted, runLiveAnalysis, settings.intervalSec]);
+  }, [liveOn, paused, focused, ready, keyReady, permission.granted, runLiveAnalysis, settings.intervalSec]);
 
   const handleCapture = useCallback(async () => {
     if (!ready || captureBusyRef.current) return;
@@ -326,7 +327,7 @@ export default function CameraScreen() {
     }
   }, [flash, ready, settings, currentMeta]);
 
-  if (!permission) {
+  if (!permission.checked) {
     return (
       <View style={styles.center}>
         <ActivityIndicator color={palette.accent} />
@@ -342,7 +343,7 @@ export default function CameraScreen() {
           这个应用要看着取景画面才能给建议,所以必须先拿到相机权限。
         </Text>
         {permission.canAskAgain ? (
-          <Pressable style={styles.gateButton} onPress={() => void requestPermission()}>
+          <Pressable style={styles.gateButton} onPress={() => void permission.request()}>
             <Text style={styles.gateButtonText}>允许使用相机</Text>
           </Pressable>
         ) : (

@@ -26,7 +26,6 @@ src/app/           路由(Expo Router,文件即页面)
 src/components/    构图线 / 水平仪 / 建议卡片
 src/hooks/         水平仪(加速度计)
 src/lib/           API 客户端、类型、配色
-server/            本地代理:画面体检 + DeepSeek 视觉建议
 ```
 
 ## 架构:App 直连 DeepSeek,不需要任何服务器
@@ -41,8 +40,8 @@ server/            本地代理:画面体检 + DeepSeek 视觉建议
 - Key **不在安装包里**:打开 App 后到设置里填一次
 - Key 只存在设备加密存储,只出现在请求头里
 
-`server/` 目录是早期"局域网代理"方案留下的,当前**不再使用**,保留着方便以后切回
-"服务器托管 Key"的形态(App 的「接口地址」填你的服务器即可)。
+目前**没有任何自建服务器**:Key 在手机上,请求直连 DeepSeek。
+如果以后要做"服务器托管 Key",把「接口地址」改成自己的服务即可。
 
 ## 三步跑起来
 
@@ -98,12 +97,7 @@ DeepSeek 的 `deepseek-flash` **默认开启思考模式且 effort=high**,会让
 
 实测(局域网,`detail: low`):取景建议 **1.0~1.8s**,拍后点评 **1.3s**。
 
-如果还是慢,在 `server/.env` 里放宽:
-
-```
-ANALYZE_TIMEOUT_MS=20000
-ANALYZE_CAPTURE_TIMEOUT_MS=40000
-```
+如果还是慢,可以试着把设置里的「快速模式」保持开启(关闭会走高强度思考)。
 
 ## 直接在自己电脑上验接口
 

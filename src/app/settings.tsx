@@ -225,9 +225,6 @@ export default function SettingsScreen() {
           <Pressable onPress={() => router.push('/probe')} style={styles.probeRow} hitSlop={8}>
             <Text style={styles.linkText}>相机能力探测 ›</Text>
           </Pressable>
-          <Pressable onPress={() => router.push('/camera2-test')} hitSlop={8}>
-            <Text style={styles.linkText}>自研 Camera2 相机验证 ›</Text>
-          </Pressable>
         </View>
       </ScrollView>
     </SafeAreaView>
