@@ -1,5 +1,5 @@
 import type { PhotoMeta } from './exif';
-import type { CaptureResult } from './types';
+import type { AdjustParams, CaptureResult } from './types';
 
 /**
  * 把"刚刚拍下的这张"存在内存里,跨页面读取。
@@ -23,6 +23,19 @@ export function setLastCapture(next: LastCapture) {
 
 export function getLastCapture(): LastCapture | null {
   return last;
+}
+
+/** 复盘页点「应用并重拍」时暂存,回到相机页消费一次 */
+let pendingAdjust: AdjustParams | null = null;
+
+export function setPendingAdjust(next: AdjustParams | null) {
+  pendingAdjust = next;
+}
+
+export function takePendingAdjust(): AdjustParams | null {
+  const value = pendingAdjust;
+  pendingAdjust = null;
+  return value;
 }
 
 /** 复盘页的点评状态:照片先到,点评后到 */

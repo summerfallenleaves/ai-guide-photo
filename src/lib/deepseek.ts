@@ -1,5 +1,5 @@
 import { describeMeta, type PhotoMeta } from './exif';
-import type { CaptureResult, Dim, LiveSuggestion } from './types';
+import type { AdjustParams, CaptureResult, Dim, LiveSuggestion } from './types';
 
 export type Thinking = 'disabled' | 'low' | 'high';
 export type AnalyzeOutcome = LiveSuggestion | CaptureResult;
@@ -42,7 +42,30 @@ const CAPTURE_PROMPT = `这是用户刚按下快门拍下的一张照片。
 4. 中文,说人话。
 
 只输出 JSON,不要 markdown 代码块:
-{"score":整数,"headline":"不超过14个字","improvements":["不超过30个字","...","..."],"dims":["composition","light","pose","background","settings" 中的一个或多个],"confidence":0到1的小数}`;
+{"score":整数,"headline":"不超过14个字","improvements":["不超过30个字","...","..."],"params":{"iso":整数,"shutter":"1/250","wb":5500,"focusMeters":1.2},"confidence":0到1的小数}
+
+关于 params:
+- 只有当调整拍摄参数确实能改善这张照片时才给,照片已经很好就省略整个 params。
+- 只写需要改的项,没把握的字段直接不要写。
+- iso 是数字;shutter 写成 "1/250" 或 "0.5" 这样的字符串;wb 是色温数字(如 5500);focusMeters 是对焦距离(米)。
+- 必须落在下面给出的硬件范围内,不要给范围外的值。`;
+
+/** 把相机的硬件范围拼进 prompt,避免模型给出设不进去的参数 */
+function withLimits(base: string, limits?: CameraLimits): string {
+  if (!limits) return base;
+  const shutterMin = formatShutterNs(limits.exposureMinNs);
+  const shutterMax = formatShutterNs(limits.exposureMaxNs);
+  return `${base}
+
+当前相机的可调范围:ISO ${limits.isoMin}~${limits.isoMax};快门 ${shutterMin}~${shutterMax}。`;
+}
+
+function formatShutterNs(ns: number): string {
+  if (!ns || ns <= 0) return '未知';
+  const s = ns / 1e9;
+  if (s >= 1) return `${Number(s.toFixed(1))}s`;
+  return `1/${Math.round(1 / s)}s`;
+}
 
 /**
  * 把光学参数拼进 prompt。
@@ -69,10 +92,19 @@ export class DeepSeekError extends Error {
   }
 }
 
+/** 相机硬件可调范围,用于约束模型给出的参数 */
+export type CameraLimits = {
+  isoMin: number;
+  isoMax: number;
+  exposureMinNs: number;
+  exposureMaxNs: number;
+};
+
 export type AskOptions = {
   imageBase64: string;
   mode: 'live' | 'capture';
   thinking: Thinking;
+  limits?: CameraLimits;
   /** 拍摄参数,没有就不传 */
   meta?: PhotoMeta | null;
   apiKey: string;
@@ -95,7 +127,7 @@ export async function askDeepSeek(opts: AskOptions): Promise<AnalyzeOutcome> {
       {
         role: 'user',
         content: [
-          { type: 'text', text: withMeta(isCapture ? CAPTURE_PROMPT : LIVE_PROMPT, opts.meta) },
+          { type: 'text', text: withLimits(withMeta(isCapture ? CAPTURE_PROMPT : LIVE_PROMPT, opts.meta), isCapture ? opts.limits : undefined) },
           {
             type: 'image_url',
             image_url: { url: `data:image/jpeg;base64,${opts.imageBase64}`, detail: 'high' },
@@ -243,6 +275,7 @@ function normalize(p: Record<string, unknown>, isCapture: boolean): AnalyzeOutco
       dim,
       dimLabel: DIM_LABELS[dim],
       improvements,
+      params: normalizeParams(p.params),
       confidence: clamp01(p.confidence, 0.6),
       source: 'deepseek',
     };
@@ -258,6 +291,22 @@ function normalize(p: Record<string, unknown>, isCapture: boolean): AnalyzeOutco
     confidence: clamp01(p.confidence, 0.6),
     source: 'deepseek',
   };
+}
+
+/** 解析并清洗模型给的可执行参数;全空就返回 null */
+function normalizeParams(raw: unknown): AdjustParams | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  const out: AdjustParams = {};
+  const iso = Number(o.iso);
+  if (Number.isFinite(iso) && iso > 0) out.iso = Math.round(iso);
+  if (typeof o.shutter === 'string' && o.shutter.trim()) out.shutter = o.shutter.trim();
+  else if (Number.isFinite(Number(o.shutter)) && Number(o.shutter) > 0) out.shutter = String(o.shutter);
+  const wb = Number(o.wb);
+  if (Number.isFinite(wb) && wb >= 2000 && wb <= 10000) out.wb = Math.round(wb);
+  const focus = Number(o.focusMeters);
+  if (Number.isFinite(focus) && focus > 0) out.focusMeters = focus;
+  return Object.keys(out).length > 0 ? out : null;
 }
 
 function clip(value: unknown, max: number): string {

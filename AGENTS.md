@@ -189,9 +189,48 @@ Expo 每个 SDK 版本都有破坏性改动,记忆里的 API 很可能已经改�
 
 ---
 
-## 六、相机相关的硬约束
+## 六、相机:自研 Camera2(重要)
 
-- `CameraView` **拿不到预览帧流**,只能定时 `takePictureAsync` 抓快照;更高频会明显发热
+主界面的相机**不是 expo-camera**,而是项目内自研的 Camera2 实现,源码在
+`native/android-camera/`(已入版本控制),同步脚本 `.toolchain/sync-native.sh`。
+
+### 为什么自研
+
+| 方案 | 结果 |
+| --- | --- |
+| `expo-camera` | CameraX 高层封装,**不暴露任何曝光控制**,只能缩放/闪光 |
+| `react-native-vision-camera` 5.x | 能编译,但 nitro 桥在 RN 0.88 上属性全返回默认值(设备名 `CameraDevice`、ISO 恒为 0),**运行时不可用** |
+| **自研 Camera2**(当前) | 完全可控:手动 ISO / 快门 / 对焦 / 白平衡全部验证通过 |
+
+设备能力:该机为 `LEVEL_3`,支持 `MANUAL_SENSOR` / `MANUAL_POST_PROCESSING`,
+实测 ISO 100~800、快门 1s~1/38460s、f/1.6、等效约 23mm、单后摄(无光学变焦)。
+
+### 结构
+
+```
+native/android-camera/
+├── CameraProbeModule.kt     设备能力探测(设置页「相机能力探测」)
+├── CameraProbePackage.kt
+└── camera/
+    ├── Camera2Engine.kt     会话/预览/拍照/手动参数/实时参数回报
+    ├── Camera2PreviewView.kt TextureView + 抓预览帧(base64)
+    ├── Camera2Module.kt     RN 入口:takePicture / grabPreview / setManual / getCapabilities
+    └── Camera2Package.kt    ViewManager + Module 注册
+```
+
+### 关键实现约定
+
+- **手动曝光必须同时给 ISO 和快门**,只给一个会退回自动(`CONTROL_AE_MODE=OFF` 需要两者)
+- 每轴设置前先查 `CONTROL_AE/AF/AWB_AVAILABLE_MODES`,不支持就跳过该轴,**不能让整个预览失败**
+- 参数组合被拒时**退回基础预览请求**,保证永远有画面
+- **离开页面必须释放相机**:预览按焦点门控挂载;`destroy()` 要处理"打开过程中就退出"的竞态,
+  否则相机会被漏在打开状态,导致别的页面一直黑屏
+- 抓帧分析用 `grabPreview()`(读 TextureView 当前帧),比拍全尺寸再缩图快得多,
+  而且**送模型的就是用户看到的画面**
+
+### 布局与帧相关的老约束(仍然成立)
+
+- `CameraView` **拿不到预览帧流**,只能定时抓帧;更高频会明显发热
 - `animateShutter` 是 `CameraView` 的 **prop**,不是 `takePictureAsync` 的选项;必须设为 `false`,
   否则每 3 秒抓帧都会触发一次快门动画和声音
 - 水平仪用的是加速度计(`src/hooks/use-tilt.ts`),**横竖握要换轴**:
@@ -332,7 +371,9 @@ npx tsc --noEmit && npx eslint src --ext .ts,.tsx   # 先过类型和 lint
 
 1. `ANDROID_USER_HOME` 与 `ANDROID_PREFS_ROOT` **不能同时设置**,只保留前者
 2. Gradle 依赖必须走阿里云镜像(官方源 127KB/s,镜像 1.4MB/s)
-3. **`prebuild --clean` 会冲掉三处手工修改**,重建后要重新应用:
+3. **`prebuild --clean` 会冲掉自研相机的 Kotlin 代码**(在 `android/` 里,不入库),
+   重建后必须执行 `.toolchain/sync-native.sh` 恢复源码与 Package 注册
+4. **`prebuild --clean` 还会冲掉三处手工修改**,重建后要重新应用:
    - `android/gradle.properties`:`jvmargs` 提到 4G、`reactNativeArchitectures=arm64-v8a`、
      `android.enableMinifyInReleaseBuilds=false`
    - `android/app/build.gradle`:新增 `signingConfigs.release` 并让 release buildType 使用它
@@ -346,6 +387,9 @@ npx tsc --noEmit && npx eslint src --ext .ts,.tsx   # 先过类型和 lint
 ## 十、已知遗留
 
 - `expo-image` 依赖已不再使用(复盘页换成了 RN 原生 `Image`),可移除
+- `expo-camera` 现在只用于申请相机权限,相机本体已自研
+- 色温转 RGB 增益用的是普朗克黑体近似,白平衡可能偏色过头,需要按真机再标定
+- AI 几乎总会给出 `params`,很少出现"照片很好、不给参数"的情况
 - `server/` 是旧代理方案,未删除,当前不参与运行
 - iOS 完全未验证(没有真机,模拟器相机不可用)
 - 「建议历史」未实现

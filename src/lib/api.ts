@@ -1,4 +1,4 @@
-import { askDeepSeek, DeepSeekError, DEFAULT_ENDPOINT, type Thinking } from './deepseek';
+import { askDeepSeek, DeepSeekError, DEFAULT_ENDPOINT, type CameraLimits, type Thinking } from './deepseek';
 import type { PhotoMeta } from './exif';
 import { getCachedApiKey } from './secure-key';
 import type { AnalysisResult } from './types';
@@ -11,6 +11,8 @@ export type AnalyzeOptions = {
   timeoutMs?: number;
   /** 相机记录的光学参数 */
   meta?: PhotoMeta | null;
+  /** 相机硬件可调范围,用于约束 AI 给出的参数 */
+  limits?: CameraLimits;
 };
 
 /**
@@ -34,6 +36,7 @@ export async function analyze(
     mode,
     thinking: opts.thinking ?? 'disabled',
     meta: opts.meta,
+    limits: opts.limits,
     apiKey,
     endpoint: opts.endpoint,
     timeoutMs: opts.timeoutMs,

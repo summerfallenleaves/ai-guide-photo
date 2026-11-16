@@ -1,9 +1,10 @@
-import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
+  addErrorListener,
   addParamsListener,
   Camera2Preview,
   formatShutterNs,
@@ -35,6 +36,14 @@ const WB_PRESETS = [3000, 4000, 5500, 6500];
 /** 阶段 1 验收页:手动 ISO / 快门 / 对焦 / 白平衡 */
 export default function Camera2TestScreen() {
   const available = isNativeCameraAvailable();
+  const [focused, setFocused] = useState(true);
+
+  useFocusEffect(
+    useCallback(() => {
+      setFocused(true);
+      return () => setFocused(false);
+    }, []),
+  );
 
   const [caps, setCaps] = useState<Camera2Caps | null>(null);
   const [params, setParams] = useState<Camera2Params | null>(null);
@@ -42,6 +51,7 @@ export default function Camera2TestScreen() {
   const [activeFocus, setActiveFocus] = useState<string>('auto');
   const [activeWb, setActiveWb] = useState<number | 'auto'>('auto');
 
+  const [engineError, setEngineError] = useState<string | null>(null);
   const [shot, setShot] = useState<string | null>(null);
   const [status, setStatus] = useState('等待预览…');
   const [busy, setBusy] = useState(false);
@@ -49,11 +59,13 @@ export default function Camera2TestScreen() {
   useEffect(() => {
     if (!available) return;
     const off = addParamsListener(setParams);
+    const offErr = addErrorListener((msg) => setEngineError(msg));
     const timer = setTimeout(() => {
       void getCapabilities().then(setCaps);
     }, 1200);
     return () => {
       off();
+      offErr();
       clearTimeout(timer);
     };
   }, [available]);
@@ -100,7 +112,9 @@ export default function Camera2TestScreen() {
 
   return (
     <View style={styles.root}>
-      {available ? <Camera2Preview style={StyleSheet.absoluteFill} facing="back" /> : null}
+      {available && focused ? (
+        <Camera2Preview style={StyleSheet.absoluteFill} facing="back" />
+      ) : null}
 
       <SafeAreaView style={styles.overlay} edges={['top', 'bottom']} pointerEvents="box-none">
         <View style={styles.header}>
@@ -150,6 +164,8 @@ export default function Camera2TestScreen() {
             active={String(activeWb)}
             onPick={(key) => applyWb(key === 'auto' ? 'auto' : Number(key))}
           />
+
+          {engineError ? <Text style={styles.errorText}>相机错误:{engineError}</Text> : null}
 
           {shot ? <Image source={{ uri: shot }} style={styles.thumb} resizeMode="contain" /> : null}
           <Text style={styles.status}>{status}</Text>
@@ -253,6 +269,7 @@ const styles = StyleSheet.create({
   chipTextOn: { color: '#00131F' },
   thumb: { height: 90, borderRadius: radius.md, backgroundColor: 'rgba(255,255,255,0.06)' },
   status: { color: '#fff', fontSize: 11.5 },
+  errorText: { color: palette.danger, fontSize: 11.5, lineHeight: 17 },
   shutter: {
     alignSelf: 'center',
     width: 64,

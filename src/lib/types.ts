@@ -23,6 +23,17 @@ export type LiveSuggestion = {
   metrics?: Metrics | null;
 };
 
+/** AI 给出的可执行拍摄参数(全部可选,只给需要改的项) */
+export type AdjustParams = {
+  iso?: number;
+  /** "1/250" 或 "0.5" 这样的快门字符串 */
+  shutter?: string;
+  /** 色温 K */
+  wb?: number;
+  /** 对焦距离,单位米 */
+  focusMeters?: number;
+};
+
 export type CaptureResult = {
   mode: 'capture';
   score: number;
@@ -30,6 +41,8 @@ export type CaptureResult = {
   dim: Dim;
   dimLabel: string;
   improvements: string[];
+  /** 建议应用的拍摄参数,没有就不给 */
+  params?: AdjustParams | null;
   confidence: number;
   source: SuggestionSource;
   metrics?: Metrics | null;

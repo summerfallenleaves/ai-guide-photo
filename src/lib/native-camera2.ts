@@ -22,6 +22,11 @@ export type Camera2Caps = {
   minFocusDistance: number;
 };
 
+export type Camera2CapsFull = Camera2Caps & {
+  focalLengthMm?: number;
+  aperture?: number;
+};
+
 export type Camera2Params = {
   iso: number;
   exposureNs: number;
@@ -32,6 +37,7 @@ export type Camera2Params = {
 
 type Camera2ModuleType = {
   takePicture(): Promise<string>;
+  grabPreview(targetWidth: number, quality: number): Promise<string>;
   setManual(
     iso: number | null,
     exposureNs: number | null,
@@ -53,6 +59,12 @@ export async function takePicture(): Promise<string> {
   return native.takePicture();
 }
 
+/** 抓当前预览帧,返回 JPEG base64(不带 data: 前缀) */
+export async function grabPreview(targetWidth = 1024, quality = 60): Promise<string> {
+  if (!native) throw new Error('当前环境没有原生相机模块');
+  return native.grabPreview(targetWidth, quality);
+}
+
 /** 设置手动参数;某个轴传 null 表示回到自动 */
 export function setManual(params: Partial<{
   iso: number | null;
@@ -68,14 +80,36 @@ export function setManual(params: Partial<{
   );
 }
 
-export async function getCapabilities(): Promise<Camera2Caps | null> {
+export async function getCapabilities(): Promise<Camera2CapsFull | null> {
   if (!native) return null;
-  return native.getCapabilities();
+  return (await native.getCapabilities()) as Camera2CapsFull;
 }
 
 export function addParamsListener(cb: (p: Camera2Params) => void): () => void {
   const sub = DeviceEventEmitter.addListener('Camera2Params', cb);
   return () => sub.remove();
+}
+
+export function addErrorListener(cb: (message: string) => void): () => void {
+  const sub = DeviceEventEmitter.addListener('Camera2Error', cb);
+  return () => sub.remove();
+}
+
+export function addReadyListener(cb: () => void): () => void {
+  const sub = DeviceEventEmitter.addListener('Camera2Ready', cb);
+  return () => sub.remove();
+}
+
+/** "1/250" 或 "0.5" → 纳秒;解析不出来返回 undefined */
+export function parseShutterToNs(text: string): number | undefined {
+  const t = text.trim().toLowerCase().replace('s', '');
+  const frac = t.match(/^(\d+(?:\.\d+)?)\/(\d+(?:\.\d+)?)$/);
+  if (frac) {
+    const v = Number(frac[1]) / Number(frac[2]);
+    return Number.isFinite(v) && v > 0 ? v * 1e9 : undefined;
+  }
+  const n = Number(t);
+  return Number.isFinite(n) && n > 0 ? n * 1e9 : undefined;
 }
 
 export function formatShutterNs(ns: number): string {

@@ -1,4 +1,4 @@
-import { CameraView, useCameraPermissions } from 'expo-camera';
+import { useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -19,22 +19,34 @@ import { LevelBadge } from '@/components/level-badge';
 import { RotateButton } from '@/components/rotate-button';
 import { SuggestionCard } from '@/components/suggestion-card';
 import { useTilt } from '@/hooks/use-tilt';
-import { useCameraLock } from '@/hooks/use-camera-lock';
 import { useOrientation } from '@/hooks/use-orientation';
 import { analyze } from '@/lib/api';
 import { useApiKey } from '@/hooks/use-api-key';
+import {
+  addErrorListener,
+  formatShutterNs,
+  parseShutterToNs,
+  setManual,
+  addParamsListener,
+  addReadyListener,
+  Camera2Preview,
+  getCapabilities,
+  grabPreview,
+  takePicture,
+  type Camera2CapsFull,
+  type Camera2Params,
+} from '@/lib/native-camera2';
 import { toAnalysisBase64 } from '@/lib/analysis-image';
-import { extractPhotoMeta } from '@/lib/exif';
-import { setLastCapture, setReviewState } from '@/lib/capture-store';
+import type { PhotoMeta } from '@/lib/exif';
+import type { AdjustParams, LiveSuggestion } from '@/lib/types';
+import { setLastCapture, setReviewState, takePendingAdjust } from '@/lib/capture-store';
 import { liveAnalysisEnabled, thinkingOf, useSettings } from '@/lib/settings';
 import { saveToAlbum } from '@/lib/media';
 import { palette, radius } from '@/lib/theme';
-import type { LiveSuggestion } from '@/lib/types';
 
 const MAX_CONSECUTIVE_FAILURES = 3;
 
 export default function CameraScreen() {
-  const cameraRef = useRef<CameraView>(null);
   const [permission, requestPermission] = useCameraPermissions();
 
   const settings = useSettings();
@@ -55,13 +67,21 @@ export default function CameraScreen() {
   const [error, setError] = useState<string | null>(null);
   const [capturing, setCapturing] = useState(false);
 
+  /** 原生相机实时回报的参数与静态光学信息 */
+  const paramsRef = useRef<Camera2Params | null>(null);
+  /** 从复盘页带回来、等相机就绪后应用的参数 */
+  const pendingAdjustRef = useRef<AdjustParams | null>(null);
+  const [appliedNote, setAppliedNote] = useState<string | null>(null);
+  /** 相机实时回报的参数,用于顶栏显示 */
+  const [liveParams, setLiveParams] = useState<Camera2Params | null>(null);
+  const capsRef = useRef<Camera2CapsFull | null>(null);
+
   const analyzeBusyRef = useRef(false);
   const captureBusyRef = useRef(false);
   const failuresRef = useRef(0);
   /** 每次拍照自增,用来丢弃"上一张"迟到的点评结果 */
   const reviewSeq = useRef(0);
   const flash = useMemo(() => new Animated.Value(0), []);
-  const withCameraLock = useCameraLock();
 
   const tilt = useTilt(focused && ready);
   const { isLandscape, toggle: toggleOrientation } = useOrientation();
@@ -69,12 +89,111 @@ export default function CameraScreen() {
   // 横屏右侧浮动列的宽度
   const panelWidth = Math.min(Math.max(screenWidth * 0.34, 230), 320);
 
+  /** 把 AI 建议的参数合并进当前状态并下发给相机 */
+  const applyAdjust = useCallback((adj: AdjustParams) => {
+    const cur = paramsRef.current;
+    const caps = capsRef.current;
+    const wantsExposure = adj.iso != null || !!adj.shutter;
+
+    let iso: number | null;
+    let exposureNs: number | null;
+    if (wantsExposure) {
+      iso = adj.iso ?? (cur?.manual ? cur.iso : null);
+      exposureNs = adj.shutter
+        ? parseShutterToNs(adj.shutter) ?? null
+        : cur?.manual
+          ? cur.exposureNs
+          : null;
+      if (iso == null || exposureNs == null) {
+        iso = null;
+        exposureNs = null;
+      }
+    } else if (cur?.manual) {
+      iso = cur.iso;
+      exposureNs = cur.exposureNs;
+    } else {
+      iso = null;
+      exposureNs = null;
+    }
+
+    if (caps) {
+      if (iso != null) iso = Math.min(caps.isoMax, Math.max(caps.isoMin, iso));
+      if (exposureNs != null) {
+        exposureNs = Math.min(caps.exposureMaxNs, Math.max(caps.exposureMinNs, exposureNs));
+      }
+    }
+
+    const kelvin = adj.wb ?? (cur?.kelvin ? cur.kelvin : null);
+    const focusDiopters = adj.focusMeters ? 1 / adj.focusMeters : (cur?.focusDiopters || null);
+
+    setManual({ iso, exposureNs, kelvin, focusDiopters });
+
+    const parts: string[] = [];
+    if (iso) parts.push(`ISO ${iso}`);
+    if (exposureNs) parts.push(formatShutterNs(exposureNs));
+    if (kelvin) parts.push(`${kelvin}K`);
+    setAppliedNote(parts.length ? `已应用 ${parts.join(' · ')}` : '已应用建议参数');
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       setFocused(true);
-      return () => setFocused(false);
+      const incoming = takePendingAdjust();
+      if (incoming) {
+        // 相机可能是刚挂载,等就绪事件再应用
+        pendingAdjustRef.current = incoming;
+      }
+      return () => {
+        // 离开页面立刻释放相机,避免和别的页面抢
+        setFocused(false);
+        setReady(false);
+      };
     }, []),
   );
+
+  useEffect(() => {
+    const offReady = addReadyListener(() => {
+      setReady(true);
+      const pending = pendingAdjustRef.current;
+      if (pending) {
+        pendingAdjustRef.current = null;
+        applyAdjust(pending);
+      }
+      void getCapabilities().then((caps) => {
+        if (caps) capsRef.current = caps;
+      });
+    });
+    const offParams = addParamsListener((p) => {
+      paramsRef.current = p;
+      setLiveParams(p);
+    });
+    const offError = addErrorListener((msg) => setError(msg));
+    return () => {
+      offReady();
+      offParams();
+      offError();
+    };
+  }, [applyAdjust]);
+
+  /** 把原生回报的参数拼成送模型的 meta */
+  const currentMeta = useCallback((): PhotoMeta | null => {
+    if (!settings.paramAdvice) return null;
+    const p = paramsRef.current;
+    const caps = capsRef.current;
+    if (!p && !caps) return null;
+    return {
+      iso: p?.iso && p.iso > 0 ? p.iso : undefined,
+      exposureTime: p?.exposureNs ? p.exposureNs / 1e9 : undefined,
+      fNumber: caps?.aperture && caps.aperture > 0 ? caps.aperture : undefined,
+      focalLength: caps?.focalLengthMm && caps.focalLengthMm > 0 ? caps.focalLengthMm : undefined,
+    };
+  }, [settings.paramAdvice]);
+
+  useEffect(() => {
+    if (!appliedNote) return;
+    const timer = setTimeout(() => setAppliedNote(null), 4000);
+    return () => clearTimeout(timer);
+  }, [appliedNote]);
 
   const runLiveAnalysis = useCallback(async () => {
     // 正在拍照时不抓帧,避免打扰
@@ -83,25 +202,24 @@ export default function CameraScreen() {
     analyzeBusyRef.current = true;
     setAnalyzing(true);
     try {
-      const shot = await withCameraLock(() => {
-        const cam = cameraRef.current;
-        if (!cam) throw new Error('相机还没准备好');
-        return cam.takePictureAsync({
-          quality: 0.3,
-          base64: true,
-          shutterSound: false,
-          exif: settings.paramAdvice,
-        });
-      });
-      if (!shot?.base64) throw new Error('抓帧失败');
+      // 直接抓预览画面(就是用户看到的那一帧),比拍全尺寸再缩图快得多
+      const base64 = await grabPreview(1024, 60);
 
       // 取景建议一律用低思考强度:它每几秒就要刷一次,不能被推理拖住
       // 取景建议一律关闭思考:实测 thinking=low 仍会产生 300~800 个思维链 token、
       // 单次 3.5~8 秒,而 disabled 只要 1.6~1.8 秒。取景不能拿延迟换质量。
-      const result = await analyze(shot.base64, 'live', {
+      const result = await analyze(base64, 'live', {
         thinking: 'disabled',
         endpoint: settings.apiEndpoint,
-        meta: settings.paramAdvice ? extractPhotoMeta(shot.exif) : null,
+        meta: currentMeta(),
+        limits: capsRef.current
+          ? {
+              isoMin: capsRef.current.isoMin,
+              isoMax: capsRef.current.isoMax,
+              exposureMinNs: capsRef.current.exposureMinNs,
+              exposureMaxNs: capsRef.current.exposureMaxNs,
+            }
+          : undefined,
       });
       if (result.mode === 'live') {
         setSuggestion(result);
@@ -116,7 +234,7 @@ export default function CameraScreen() {
       analyzeBusyRef.current = false;
       setAnalyzing(false);
     }
-  }, [ready, withCameraLock, settings.apiEndpoint, settings.paramAdvice]);
+  }, [ready, settings.apiEndpoint, currentMeta]);
 
   // 手动重试:清掉暂停状态并立刻跑一次
   const retryNow = useCallback(() => {
@@ -148,45 +266,46 @@ export default function CameraScreen() {
     ]).start();
 
     try {
-      // 如果实时分析正在抓帧,这里最多等它那 200ms,不等网络。
-      // 不再要 base64:大图编码很慢,直接拖慢跳转。分析用的缩略图稍后在后台生成。
-      const shot = await withCameraLock(() => {
-        const cam = cameraRef.current;
-        if (!cam) throw new Error('相机还没准备好');
-        return cam.takePictureAsync({ quality: 0.9, exif: settings.paramAdvice });
-      });
-      if (!shot?.uri) throw new Error('拍照失败');
+      const rawPath = await takePicture();
+      if (!rawPath) throw new Error('拍照失败');
+      const shotUri = `file://${rawPath}`;
 
       // 先直接写相册(Android 13+ 不需要权限),失败才申请
-      const saveResult = await saveToAlbum(shot.uri);
+      const saveResult = await saveToAlbum(shotUri);
       const saved = saveResult.ok;
       if (!saved) console.warn('[capture] 保存相册失败:', saveResult.error);
 
-      const photoMeta = settings.paramAdvice ? extractPhotoMeta(shot.exif) : null;
+      const photoMeta = currentMeta();
 
       // 照片先落地:立刻进复盘页,不让用户为了等点评而干站着
-      setLastCapture({ uri: shot.uri, saved, meta: photoMeta });
+      setLastCapture({ uri: shotUri, saved, meta: photoMeta });
       setReviewState({ status: 'analyzing' });
       router.push({
         pathname: '/review',
-        params: { uri: shot.uri, saved: saved ? '1' : '0' },
+        params: { uri: shotUri, saved: saved ? '1' : '0' },
       });
 
       // 点评在后台继续跑,结果推给复盘页
       const mySeq = ++reviewSeq.current;
-      const photoUri = shot.uri;
-      const photoWidth = shot.width;
-      const photoHeight = shot.height;
+      const photoUri = shotUri;
 
       void (async () => {
           try {
             // 只给模型用的一份缩略图,不影响相册和复盘页显示的原图
-            const base64 = await toAnalysisBase64(photoUri, photoWidth, photoHeight);
+            const base64 = await toAnalysisBase64(photoUri, 0, 0);
             if (mySeq !== reviewSeq.current) return;
             const result = await analyze(base64, 'capture', {
               thinking: thinkingOf(settings),
               endpoint: settings.apiEndpoint,
               meta: photoMeta,
+              limits: capsRef.current
+                ? {
+                    isoMin: capsRef.current.isoMin,
+                    isoMax: capsRef.current.isoMax,
+                    exposureMinNs: capsRef.current.exposureMinNs,
+                    exposureMaxNs: capsRef.current.exposureMaxNs,
+                  }
+                : undefined,
             });
             if (mySeq !== reviewSeq.current) return; // 已经又拍了一张,丢弃旧结果
             setReviewState(
@@ -205,7 +324,7 @@ export default function CameraScreen() {
       captureBusyRef.current = false;
       setCapturing(false);
     }
-  }, [flash, ready, withCameraLock, settings]);
+  }, [flash, ready, settings, currentMeta]);
 
   if (!permission) {
     return (
@@ -252,14 +371,8 @@ export default function CameraScreen() {
   return (
     <View style={styles.root}>
       {/* 相机铺满整屏,横竖屏都只改叠加层的排版,不重建相机 */}
-      <CameraView
-        ref={cameraRef}
-        style={StyleSheet.absoluteFill}
-        facing={facing}
-        animateShutter={false}
-        onCameraReady={() => setReady(true)}
-        onMountError={(e) => setError(`相机启动失败:${e.message}`)}
-      />
+      {/* 只在页面可见时挂载预览:一离开就释放相机 */}
+      {focused ? <Camera2Preview style={StyleSheet.absoluteFill} facing={facing} /> : null}
       <GridOverlay visible={showGrid} />
 
       {isLandscape ? (
@@ -312,7 +425,11 @@ export default function CameraScreen() {
           <View style={styles.topRow} pointerEvents="box-none">
             <View style={styles.brand}>
               <Text style={styles.brandText}>AI 拍照引导</Text>
-              <Text style={styles.brandSub}>长按快门可连续拍摄</Text>
+              <Text style={styles.brandSub} numberOfLines={1}>
+                {liveParams
+                  ? `ISO ${liveParams.iso} · ${formatShutterNs(liveParams.exposureNs)}${liveParams.manual ? ' · 手动' : ''}`
+                  : '正在读取相机参数…'}
+              </Text>
             </View>
             <View style={styles.topRight}>
               <LevelBadge tilt={tilt} />
@@ -321,6 +438,11 @@ export default function CameraScreen() {
           </View>
 
           <View style={styles.bottomBlock} pointerEvents="box-none">
+            {appliedNote ? (
+              <View style={styles.appliedPill}>
+                <Text style={styles.appliedText}>{appliedNote}</Text>
+              </View>
+            ) : null}
             <SuggestionCard
               suggestion={suggestion}
               analyzing={analyzing}
@@ -500,6 +622,14 @@ const styles = StyleSheet.create({
     borderRadius: 31,
     backgroundColor: '#FFFFFF',
   },
+  appliedPill: {
+    alignSelf: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(74,222,128,0.9)',
+  },
+  appliedText: { color: '#04240F', fontSize: 12.5, fontWeight: '700' },
   hint: {
     textAlign: 'center',
     color: 'rgba(255,255,255,0.28)',

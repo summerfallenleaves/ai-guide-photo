@@ -12,8 +12,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { getLastCapture, getReviewState, subscribeReviewState } from '@/lib/capture-store';
+import { getLastCapture, getReviewState, setPendingAdjust, subscribeReviewState } from '@/lib/capture-store';
 import { formatMeta } from '@/lib/exif';
+import { formatShutterNs, parseShutterToNs } from '@/lib/native-camera2';
 import { saveToAlbum } from '@/lib/media';
 import { palette, radius } from '@/lib/theme';
 
@@ -150,6 +151,22 @@ export default function ReviewScreen() {
         </Text>
       )}
 
+      {review?.params ? (
+        <View style={styles.paramCard}>
+          <Text style={styles.sectionTitle}>建议参数</Text>
+          <Text style={styles.paramValues}>{describeParams(review.params)}</Text>
+          <Pressable
+            style={styles.applyBtn}
+            onPress={() => {
+              if (!review?.params) return;
+              setPendingAdjust(review.params);
+              router.back();
+            }}>
+            <Text style={styles.applyBtnText}>应用参数并重拍</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
       <View style={styles.actions}>
         <Pressable style={styles.secondaryButton} onPress={() => router.back()}>
           <Text style={styles.secondaryText}>再拍一张</Text>
@@ -191,6 +208,17 @@ export default function ReviewScreen() {
       </SafeAreaView>
     </View>
   );
+}
+
+function describeParams(p: { iso?: number; shutter?: string; wb?: number; focusMeters?: number }): string {
+  const parts: string[] = [];
+  if (p.iso) parts.push(`ISO ${p.iso}`);
+  const ns = p.shutter ? parseShutterToNs(p.shutter) : undefined;
+  if (ns) parts.push(formatShutterNs(ns));
+  else if (p.shutter) parts.push(p.shutter);
+  if (p.wb) parts.push(`${p.wb}K`);
+  if (p.focusMeters) parts.push(`对焦 ${p.focusMeters}m`);
+  return parts.join(' · ');
 }
 
 const styles = StyleSheet.create({
@@ -374,6 +402,26 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 20,
   },
+  paramCard: {
+    gap: 8,
+    padding: 12,
+    borderRadius: radius.md,
+    backgroundColor: 'rgba(91,200,255,0.10)',
+  },
+  paramValues: {
+    color: palette.text,
+    fontSize: 15,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  applyBtn: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: radius.pill,
+    backgroundColor: palette.accent,
+  },
+  applyBtnText: { color: '#00131F', fontSize: 13.5, fontWeight: '700' },
   actions: {
     flexDirection: 'row',
     gap: 12,
