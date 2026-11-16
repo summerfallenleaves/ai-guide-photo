@@ -1,3 +1,4 @@
+import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
@@ -75,6 +76,7 @@ export default function SettingsScreen() {
           <Text style={styles.summaryLine}>
             {liveOn ? `自动分析:每 ${settings.intervalSec} 秒` : '自动分析:关闭'}
           </Text>
+          <Text style={styles.versionText}>版本 {Constants.expoConfig?.version ?? '—'}</Text>
         </View>
 
         <View style={styles.card}>
@@ -411,6 +413,11 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: 'rgba(255,255,255,0.08)',
+  },
+  versionText: {
+    color: palette.textFaint,
+    fontSize: 11,
+    marginTop: 2,
   },
   linkText: {
     color: palette.accent,

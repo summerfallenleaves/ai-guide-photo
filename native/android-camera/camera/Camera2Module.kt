@@ -100,6 +100,21 @@ class Camera2Module(private val ctx: ReactApplicationContext) :
   }
 
   @ReactMethod
+  fun getTransformInfo(promise: Promise) {
+    val info = activeView?.transformInfo() ?: emptyMap()
+    val map = Arguments.createMap()
+    info.forEach { (k, v) ->
+      when (v) {
+        is Int -> map.putDouble(k, v.toDouble())
+        is Long -> map.putDouble(k, v.toDouble())
+        is Float -> map.putDouble(k, v.toDouble())
+        else -> map.putString(k, v.toString())
+      }
+    }
+    promise.resolve(map)
+  }
+
+  @ReactMethod
   fun getCapabilities(promise: Promise) {
     val caps = activeView?.capabilities() ?: emptyMap()
     val map = Arguments.createMap()

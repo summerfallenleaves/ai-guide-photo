@@ -17,7 +17,6 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.util.Size
 import android.view.Surface
-import android.view.WindowManager
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.math.abs
@@ -431,22 +430,14 @@ class Camera2Engine(
   }
 
   /**
-   * JPEG 方向。传感器角度是固定的,但用户可能竖着拍也可能横着拍,
-   * 必须减去当前屏幕旋转量,否则横屏拍出来的照片会躺倒。
+   * JPEG 方向:用**设备物理朝向**补偿,不看窗口方向。
+   * 这样按 UI 旋转按钮不会影响出片方向,只有真的转了手机才会。
    */
+  /** 设备物理朝向由视图注入,JPEG 方向也用它,保证和预览一致 */
+  var deviceOrientationProvider: (() -> Int)? = null
+
   private fun jpegRotation(): Int {
-    val rotation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-      context.display?.rotation ?: Surface.ROTATION_0
-    } else {
-      @Suppress("DEPRECATION")
-      (context.getSystemService(Context.WINDOW_SERVICE) as WindowManager).defaultDisplay.rotation
-    }
-    val deviceDegrees = when (rotation) {
-      Surface.ROTATION_90 -> 90
-      Surface.ROTATION_180 -> 180
-      Surface.ROTATION_270 -> 270
-      else -> 0
-    }
+    val deviceDegrees = deviceOrientationProvider?.invoke() ?: 0
     return if (facing == CameraCharacteristics.LENS_FACING_FRONT) {
       (sensorOrientation + deviceDegrees) % 360
     } else {

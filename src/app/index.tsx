@@ -32,10 +32,12 @@ import {
   addReadyListener,
   Camera2Preview,
   getCapabilities,
+  getTransformInfo,
   grabPreview,
   takePicture,
   type Camera2CapsFull,
   type Camera2Params,
+  type TransformInfo,
 } from '@/lib/native-camera2';
 import { toAnalysisBase64 } from '@/lib/analysis-image';
 import type { PhotoMeta } from '@/lib/exif';
@@ -76,6 +78,16 @@ export default function CameraScreen() {
   const [appliedNote, setAppliedNote] = useState<string | null>(null);
   /** 相机实时回报的参数,用于顶栏显示 */
   const [liveParams, setLiveParams] = useState<Camera2Params | null>(null);
+  /** 临时诊断:预览变换现场数据 */
+  const [transform, setTransform] = useState<TransformInfo | null>(null);
+
+  useEffect(() => {
+    if (!ready) return;
+    const timer = setInterval(() => {
+      void getTransformInfo().then(setTransform);
+    }, 600);
+    return () => clearInterval(timer);
+  }, [ready]);
   const capsRef = useRef<Camera2CapsFull | null>(null);
 
   const analyzeBusyRef = useRef(false);
@@ -398,6 +410,23 @@ export default function CameraScreen() {
   return (
     <View style={styles.root}>
       {/* 相机铺满整屏,横竖屏都只改叠加层的排版,不重建相机 */}
+      {transform ? (
+        <View style={styles.debugBox} pointerEvents="none">
+          <Text style={styles.debugText}>
+            视图 {Math.round(transform.viewW)}×{Math.round(transform.viewH)} · 缓冲{' '}
+            {transform.bufferW}×{transform.bufferH}
+          </Text>
+          <Text style={styles.debugText}>
+            纹理旋转 {transform.textureRotation}° · 显示 {transform.displayRotation * 90}° · 设备{' '}
+            {transform.deviceOrientation}°
+          </Text>
+          <Text style={styles.debugText}>
+            矩阵 [{transform.m0.toFixed(2)} {transform.m1.toFixed(2)} {transform.m4.toFixed(2)}{' '}
+            {transform.m5.toFixed(2)}] · 缩放 {transform.scale.toFixed(2)}
+          </Text>
+        </View>
+      ) : null}
+
       {/* 只在页面可见时挂载预览:一离开就释放相机 */}
       {focused ? <Camera2Preview style={StyleSheet.absoluteFill} facing={facing} /> : null}
       <GridOverlay visible={showGrid} />
@@ -648,6 +677,22 @@ const styles = StyleSheet.create({
     height: 62,
     borderRadius: 31,
     backgroundColor: '#FFFFFF',
+  },
+  debugBox: {
+    position: 'absolute',
+    top: 64,
+    left: 12,
+    right: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    gap: 2,
+  },
+  debugText: {
+    color: '#7CFCB0',
+    fontSize: 10,
+    fontVariant: ['tabular-nums'],
   },
   appliedPill: {
     alignSelf: 'center',

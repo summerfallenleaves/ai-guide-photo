@@ -6,6 +6,7 @@ import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraCharacteristics
 import android.util.Base64
 import android.view.Gravity
+import android.view.OrientationEventListener
 import android.view.TextureView
 import android.widget.FrameLayout
 import java.io.ByteArrayOutputStream
@@ -30,9 +31,11 @@ object Camera2Bus {
 }
 
 /**
- * 最小的原生相机预览视图。
+ * 原生相机预览视图。
  *
- * 只负责:把 TextureView 的 Surface 交给 Camera2Engine,把 takePicture / setManual 转发下去。
+ * **预览不做任何旋转补偿** —— 画面永远按传感器原始朝向显示。
+ * 界面上的旋转按钮只影响 UI 元素(快门/网格/翻转/悬浮卡片),不碰预览。
+ * 方向传感器只用来给**拍照**算 JPEG 方向,保证存下来的照片是正的。
  */
 class Camera2PreviewView(context: Context) : FrameLayout(context) {
 
@@ -46,6 +49,16 @@ class Camera2PreviewView(context: Context) : FrameLayout(context) {
         restart()
       }
     }
+
+  /** 设备物理朝向,只用于拍照方向 */
+  private var deviceOrientation = 0
+
+  private val orientationListener = object : OrientationEventListener(context) {
+    override fun onOrientationChanged(orientation: Int) {
+      if (orientation == ORIENTATION_UNKNOWN) return
+      deviceOrientation = (((orientation + 45) / 90) * 90) % 360
+    }
+  }
 
   init {
     addView(textureView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT, Gravity.CENTER))
@@ -73,7 +86,7 @@ class Camera2PreviewView(context: Context) : FrameLayout(context) {
       },
       onReady = { w, h ->
         post {
-          updateTransform()
+          fitPreview()
           onEngineReady?.invoke(w, h)
           Camera2Bus.onReady?.invoke()
         }
@@ -81,32 +94,26 @@ class Camera2PreviewView(context: Context) : FrameLayout(context) {
       onParams = { iso, exp, focus, kelvin, manual, ar, ag, ab, nr, ng, nb ->
         post { Camera2Bus.onParams?.invoke(iso, exp, focus, kelvin, manual, ar, ag, ab, nr, ng, nb) }
       },
-    ).also { engine = it }
+    ).also {
+      it.deviceOrientationProvider = { deviceOrientation }
+      engine = it
+    }
     e.attach(st, width.coerceAtLeast(1), height.coerceAtLeast(1), facing)
   }
 
   /**
-   * 让预览等比铺进容器:
-   * 1. 把 TextureView 按缓冲尺寸摆放(缓冲是横向的)
-   * 2. 按传感器角度整体旋转,画面才正立
-   * 3. 等比缩放到容器内,多余部分留黑边 —— 不做拉伸
-   *
-   * 这样取景框里的构图和拍下来的照片完全对应。
+   * 把预览铺进容器:**保持缓冲原始比例、不做旋转**,等比放大铺满。
+   * 这一步是为了避免以前"把缓冲直接拉伸到容器大小"造成的人物变形。
    */
-  private fun updateTransform() {
-    val e = engine ?: return
-    val ps = e.previewSize ?: return
+  private fun fitPreview() {
+    val ps = engine?.previewSize ?: return
     val vw = width
     val vh = height
     if (vw <= 0 || vh <= 0 || ps.width <= 0 || ps.height <= 0) return
 
     textureView.layoutParams = LayoutParams(ps.width, ps.height, Gravity.CENTER)
-    textureView.rotation = e.sensorOrientation.toFloat()
-
-    val rotated = e.sensorOrientation % 180 != 0
-    val dispW = (if (rotated) ps.height else ps.width).toFloat()
-    val dispH = (if (rotated) ps.width else ps.height).toFloat()
-    val scale = kotlin.math.min(vw / dispW, vh / dispH)
+    textureView.rotation = 0f
+    val scale = kotlin.math.max(vw.toFloat() / ps.width, vh.toFloat() / ps.height)
     textureView.scaleX = scale
     textureView.scaleY = scale
     textureView.requestLayout()
@@ -114,7 +121,8 @@ class Camera2PreviewView(context: Context) : FrameLayout(context) {
 
   override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
     super.onSizeChanged(w, h, oldw, oldh)
-    updateTransform()
+    fitPreview()
+    post { fitPreview() }
   }
 
   private fun restart() {
@@ -167,15 +175,59 @@ class Camera2PreviewView(context: Context) : FrameLayout(context) {
 
   fun capabilities(): Map<String, Any> = engine?.capabilities() ?: emptyMap()
 
+  /**
+   * 排查预览方向用的现场数据。
+   * transformMatrix 是关键:它由 SurfaceTexture 的生产者(HAL)设置,
+   * 我们设的 textureView.rotation 覆盖不了它。
+   */
+  fun transformInfo(): Map<String, Any> {
+    val ps = engine?.previewSize
+    val m = FloatArray(16)
+    try {
+      textureView.surfaceTexture?.getTransformMatrix(m)
+    } catch (_: Throwable) {
+    }
+    val displayRot = try {
+      if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+        display?.rotation ?: 0
+      } else {
+        @Suppress("DEPRECATION")
+        (context.getSystemService(android.content.Context.WINDOW_SERVICE) as android.view.WindowManager)
+          .defaultDisplay.rotation
+      }
+    } catch (_: Throwable) {
+      0
+    }
+    val lp = textureView.layoutParams
+    return mapOf(
+      "viewW" to width,
+      "viewH" to height,
+      "bufferW" to (ps?.width ?: 0),
+      "bufferH" to (ps?.height ?: 0),
+      "layoutW" to (lp?.width ?: 0),
+      "layoutH" to (lp?.height ?: 0),
+      "textureRotation" to textureView.rotation,
+      "scale" to textureView.scaleX,
+      "displayRotation" to displayRot,
+      "m0" to m[0],
+      "m1" to m[1],
+      "m4" to m[4],
+      "m5" to m[5],
+      "deviceOrientation" to deviceOrientation,
+    )
+  }
+
   var onEngineReady: ((Int, Int) -> Unit)? = null
   var onEngineError: ((String) -> Unit)? = null
 
   override fun onAttachedToWindow() {
     super.onAttachedToWindow()
     Camera2Module.activeView = this
+    if (orientationListener.canDetectOrientation()) orientationListener.enable()
   }
 
   override fun onDetachedFromWindow() {
+    orientationListener.disable()
     // 只有"当前就是自己"时才清空,否则会把另一个还活着的视图踢掉
     if (Camera2Module.activeView === this) Camera2Module.activeView = null
     stop()
