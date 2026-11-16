@@ -17,6 +17,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.util.Size
 import android.view.Surface
+import android.view.WindowManager
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.math.abs
@@ -54,7 +55,6 @@ class Camera2Engine(
   private var imageReader: ImageReader? = null
   private var previewSurface: Surface? = null
   private var characteristics: CameraCharacteristics? = null
-  private var sensorOrientation = 0
   private var pendingCapture: ((String?, Throwable?) -> Unit)? = null
 
   /** 一旦 destroy,后续异步回调都必须放弃,否则会把相机漏在打开状态 */
@@ -68,6 +68,16 @@ class Camera2Engine(
 
   var isAttached: Boolean = false
     private set
+
+  /** 传感器安装角度(90 或 270 很常见),预览旋转要用 */
+  var sensorOrientation: Int = 0
+    private set
+
+  /** 预览缓冲尺寸;视图按它做等比适配 */
+  var previewSize: Size? = null
+    private set
+
+  private var facing: Int = CameraCharacteristics.LENS_FACING_BACK
 
   fun capabilities(): Map<String, Any> {
     val c = characteristics ?: return emptyMap()
@@ -111,17 +121,19 @@ class Camera2Engine(
         }
         val chars = manager.getCameraCharacteristics(cameraId)
         characteristics = chars
+        this.facing = facing
         sensorOrientation = chars.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
 
         val map = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
           ?: run { onError("拿不到相机配置"); return@post }
 
-        val size = choosePreviewSize(map, viewWidth, viewHeight)
-        surfaceTexture.setDefaultBufferSize(size.width, size.height)
+        val (captureSize, preview) = chooseSizes(map, viewWidth, viewHeight)
+        previewSize = preview
+        surfaceTexture.setDefaultBufferSize(preview.width, preview.height)
         previewSurface = Surface(surfaceTexture)
         isAttached = true
 
-        openCamera(manager, cameraId, surfaceTexture, viewWidth, viewHeight, facing, size, 0)
+        openCamera(manager, cameraId, surfaceTexture, viewWidth, viewHeight, facing, captureSize, 0)
       } catch (t: Throwable) {
         onError("接上预览失败:${t.message}")
       }
@@ -183,25 +195,42 @@ class Camera2Engine(
       manager.getCameraCharacteristics(it).get(CameraCharacteristics.LENS_FACING) == facing
     } ?: manager.cameraIdList.firstOrNull()
 
-  private fun choosePreviewSize(map: StreamConfigurationMap, viewWidth: Int, viewHeight: Int): Size {
-    val sizes = map.getOutputSizes(SurfaceTexture::class.java) ?: emptyArray()
-    if (sizes.isEmpty()) return Size(1280, 720)
-    val targetRatio = if (viewHeight == 0) 16f / 9f else viewWidth.toFloat() / viewHeight.toFloat()
-    val matched = sizes.filter {
-      kotlin.math.abs(it.width.toFloat() / it.height.toFloat() - targetRatio) < 0.08f
-    }.ifEmpty { sizes.toList() }
-    return matched.filter { it.width <= 1920 }.maxByOrNull { it.width }
-      ?: matched.minByOrNull { it.width }!!
+  /**
+   * 选尺寸。关键:拍摄尺寸不再"取最大",而是**挑长宽比最接近屏幕的**,
+   * 预览再挑一个和拍摄同比例、分辨率适中的。
+   * 这样取景框里看到的就是拍下来的构图,不会被裁掉或拉伸。
+   */
+  private fun chooseSizes(map: StreamConfigurationMap, viewWidth: Int, viewHeight: Int): Pair<Size, Size> {
+    val jpegSizes = map.getOutputSizes(ImageFormat.JPEG) ?: emptyArray()
+    val textureSizes = map.getOutputSizes(SurfaceTexture::class.java) ?: emptyArray()
+    if (jpegSizes.isEmpty() || textureSizes.isEmpty()) {
+      return Size(1280, 720) to Size(1280, 720)
+    }
+
+    val target = ratioOf(viewWidth.toFloat(), viewHeight.toFloat())
+    val capture = jpegSizes.minByOrNull { kotlin.math.abs(ratioOf(it.width.toFloat(), it.height.toFloat()) - target) }
+      ?: jpegSizes.maxByOrNull { it.width }!!
+    val captureRatio = ratioOf(capture.width.toFloat(), capture.height.toFloat())
+
+    val sameRatio = textureSizes.filter {
+      kotlin.math.abs(ratioOf(it.width.toFloat(), it.height.toFloat()) - captureRatio) < 0.01f
+    }
+    val preview = sameRatio.filter { it.width <= 1920 }.maxByOrNull { it.width }
+      ?: sameRatio.minByOrNull { it.width }
+      ?: textureSizes.filter { it.width <= 1920 }.maxByOrNull { it.width }
+      ?: textureSizes.first()
+
+    return capture to preview
   }
+
+  /** 统一成 <1 的比例,竖看横看都可比 */
+  private fun ratioOf(w: Float, h: Float): Float =
+    if (w <= 0f || h <= 0f) 1f else kotlin.math.min(w, h) / kotlin.math.max(w, h)
 
   private fun startSession(size: Size) {
     val device = cameraDevice ?: return
-    val map = characteristics?.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP) ?: return
 
-    val jpegSizes = map.getOutputSizes(ImageFormat.JPEG) ?: emptyArray()
-    val jpegSize = jpegSizes.filter { it.width <= 4032 }.maxByOrNull { it.width }
-      ?: jpegSizes.maxByOrNull { it.width } ?: Size(1920, 1080)
-
+    val jpegSize = size
     imageReader?.close()
     val reader = ImageReader.newInstance(jpegSize.width, jpegSize.height, ImageFormat.JPEG, 2)
     imageReader = reader
@@ -392,12 +421,36 @@ class Camera2Engine(
         val builder = device.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
         builder.addTarget(reader.surface)
         applyManualParams(builder)
-        builder.set(CaptureRequest.JPEG_ORIENTATION, sensorOrientation)
+        builder.set(CaptureRequest.JPEG_ORIENTATION, jpegRotation())
         s.capture(builder.build(), object : CameraCaptureSession.CaptureCallback() {}, handler)
       } catch (t: Throwable) {
         pendingCapture = null
         callback(null, t)
       }
+    }
+  }
+
+  /**
+   * JPEG 方向。传感器角度是固定的,但用户可能竖着拍也可能横着拍,
+   * 必须减去当前屏幕旋转量,否则横屏拍出来的照片会躺倒。
+   */
+  private fun jpegRotation(): Int {
+    val rotation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+      context.display?.rotation ?: Surface.ROTATION_0
+    } else {
+      @Suppress("DEPRECATION")
+      (context.getSystemService(Context.WINDOW_SERVICE) as WindowManager).defaultDisplay.rotation
+    }
+    val deviceDegrees = when (rotation) {
+      Surface.ROTATION_90 -> 90
+      Surface.ROTATION_180 -> 180
+      Surface.ROTATION_270 -> 270
+      else -> 0
+    }
+    return if (facing == CameraCharacteristics.LENS_FACING_FRONT) {
+      (sensorOrientation + deviceDegrees) % 360
+    } else {
+      (sensorOrientation - deviceDegrees + 360) % 360
     }
   }
 

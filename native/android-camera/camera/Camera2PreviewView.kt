@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraCharacteristics
 import android.util.Base64
+import android.view.Gravity
 import android.view.TextureView
 import android.widget.FrameLayout
 import java.io.ByteArrayOutputStream
@@ -47,7 +48,7 @@ class Camera2PreviewView(context: Context) : FrameLayout(context) {
     }
 
   init {
-    addView(textureView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+    addView(textureView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT, Gravity.CENTER))
     textureView.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
       override fun onSurfaceTextureAvailable(st: SurfaceTexture, w: Int, h: Int) = start(w, h)
       override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, w: Int, h: Int) = start(w, h)
@@ -72,6 +73,7 @@ class Camera2PreviewView(context: Context) : FrameLayout(context) {
       },
       onReady = { w, h ->
         post {
+          updateTransform()
           onEngineReady?.invoke(w, h)
           Camera2Bus.onReady?.invoke()
         }
@@ -81,6 +83,38 @@ class Camera2PreviewView(context: Context) : FrameLayout(context) {
       },
     ).also { engine = it }
     e.attach(st, width.coerceAtLeast(1), height.coerceAtLeast(1), facing)
+  }
+
+  /**
+   * 让预览等比铺进容器:
+   * 1. 把 TextureView 按缓冲尺寸摆放(缓冲是横向的)
+   * 2. 按传感器角度整体旋转,画面才正立
+   * 3. 等比缩放到容器内,多余部分留黑边 —— 不做拉伸
+   *
+   * 这样取景框里的构图和拍下来的照片完全对应。
+   */
+  private fun updateTransform() {
+    val e = engine ?: return
+    val ps = e.previewSize ?: return
+    val vw = width
+    val vh = height
+    if (vw <= 0 || vh <= 0 || ps.width <= 0 || ps.height <= 0) return
+
+    textureView.layoutParams = LayoutParams(ps.width, ps.height, Gravity.CENTER)
+    textureView.rotation = e.sensorOrientation.toFloat()
+
+    val rotated = e.sensorOrientation % 180 != 0
+    val dispW = (if (rotated) ps.height else ps.width).toFloat()
+    val dispH = (if (rotated) ps.width else ps.height).toFloat()
+    val scale = kotlin.math.min(vw / dispW, vh / dispH)
+    textureView.scaleX = scale
+    textureView.scaleY = scale
+    textureView.requestLayout()
+  }
+
+  override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+    super.onSizeChanged(w, h, oldw, oldh)
+    updateTransform()
   }
 
   private fun restart() {
