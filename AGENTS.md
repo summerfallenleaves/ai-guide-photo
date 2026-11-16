@@ -162,27 +162,30 @@ Expo 每个 SDK 版本都有破坏性改动,记忆里的 API 很可能已经改�
 
 取景建议**不许**跟随用户设置走高思考强度——3 秒刷一次,一旦被推理拖住就彻底失去意义。
 
-### 4.5 光学参数(EXIF)
+### 4.5 拍摄参数从哪来
 
-`takePictureAsync({ exif: true })` 能拿到焦距/光圈/ISO/快门/闪光灯,由 `src/lib/exif.ts` 归一化后:
+自研相机通过 `TotalCaptureResult` **实时回报**当前 ISO / 快门 / 对焦位置(约 400ms 一次),
+静态光学信息(焦距、光圈、ISO 范围、快门范围)由 `getCapabilities()` 一次取回。
 
-- 拼进 prompt(只在真有参数时才追加,并要求"参数正常就别硬提",防止模型凑内容编问题)
-- 在复盘页显示成一行(`26mm · f/1.8 · ISO 400 · 1/60s`)
-- 由设置项「参数建议」控制,关闭时不请求 exif 也不拼参数
+这些组成了送模型的 `meta`,贯穿三处:
 
-平台差异:Android 用标准 EXIF 标签(`FocalLengthIn35mmFilm`),iOS 用 Apple 缩写
-(`FocalLenIn35mmFilm`),解析时两种都试。不是所有机型都写这些字段,拿不到就整块省略。
+- 拼进 prompt(`withMeta`),且要求"参数正常就别硬提"
+- 主界面顶栏显示实时值(`ISO 320 · 1/60s`,手动时加 `· 手动`)
+- 复盘页显示一行,由设置项「参数建议」控制开关
+
+**AI 返回的 `params` 可以一键应用**:复盘页点「应用参数并重拍」→ 存进 `pendingAdjust`
+→ 回到相机页在就绪事件里合并下发。合并规则是"AI 提到哪个轴就改哪个轴",
+其余轴保持当前状态,并在下发前按硬件范围 clamp。
 
 ---
 
 ## 五、并发与锁
 
-相机有一个硬约束:**同一时刻只能有一次 `takePictureAsync`**。但"分析"和"拍照"要能并行。
+拍照与抓帧现在由原生层各自处理,JS 侧只负责不重复触发:
 
-- `useCameraLock`(`src/hooks/use-camera-lock.ts`)把拍摄调用串成队列
-- 锁**只包住 `takePictureAsync` 本身**,不包网络请求
 - 分析中用 `analyzeBusyRef`,拍照用 `captureBusyRef`,两者独立
 - 拍照时分析循环跳过;`reviewSeq` 自增用于丢弃上一张迟到的点评
+- 抓帧用 `grabPreview()`(读 TextureView 当前帧),与 `takePicture()` 互不阻塞
 
 > 早期版本用一个 `busyRef` 同时管两件事,导致**分析那 1~2 秒里按快门被静默吞掉**,
 > 而按钮看起来还是可点的。改这块务必保持"锁相机不锁网络"。
@@ -228,11 +231,9 @@ native/android-camera/
 - 抓帧分析用 `grabPreview()`(读 TextureView 当前帧),比拍全尺寸再缩图快得多,
   而且**送模型的就是用户看到的画面**
 
-### 布局与帧相关的老约束(仍然成立)
+### 其他相机相关约束
 
-- `CameraView` **拿不到预览帧流**,只能定时抓帧;更高频会明显发热
-- `animateShutter` 是 `CameraView` 的 **prop**,不是 `takePictureAsync` 的选项;必须设为 `false`,
-  否则每 3 秒抓帧都会触发一次快门动画和声音
+- 抓帧频率别贪高,3 秒一次足够,再快明显发热
 - 水平仪用的是加速度计(`src/hooks/use-tilt.ts`),**横竖握要换轴**:
   `|x|≥|y|` 时用 `atan2(y,|x|)`,否则 `atan2(x,|y|)`。写死竖屏公式会在横屏下算错
 - 旋转用 `ScreenOrientation.lockAsync(LANDSCAPE)`,不写死 `LANDSCAPE_LEFT`,让系统按握持方向决定
@@ -390,7 +391,6 @@ npx tsc --noEmit && npx eslint src --ext .ts,.tsx   # 先过类型和 lint
   见 `src/hooks/use-camera-permission.ts`
 - 色温转 RGB 增益用的是普朗克黑体近似,白平衡可能偏色过头,需要按真机再标定
 - AI 几乎总会给出 `params`,很少出现"照片很好、不给参数"的情况
-- `server/` 是旧代理方案,未删除,当前不参与运行
 - iOS 完全未验证(没有真机,模拟器相机不可用)
 - 「建议历史」未实现
 - 评分可复现性差:同一张图两次可能差 20 分以上,需要固定评分锚点或降 temperature
