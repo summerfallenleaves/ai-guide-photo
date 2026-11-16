@@ -12,6 +12,7 @@ import android.hardware.camera2.TotalCaptureResult
 import android.hardware.camera2.params.RggbChannelVector
 import android.hardware.camera2.params.StreamConfigurationMap
 import android.media.ImageReader
+import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.util.Size
@@ -31,7 +32,19 @@ class Camera2Engine(
   private val context: Context,
   private val onError: (String) -> Unit,
   private val onReady: (previewWidth: Int, previewHeight: Int) -> Unit,
-  private val onParams: (iso: Int, exposureNs: Long, focusDiopters: Float, kelvin: Int, manual: Boolean) -> Unit,
+  private val onParams: (
+    iso: Int,
+    exposureNs: Long,
+    focusDiopters: Float,
+    kelvin: Int,
+    manual: Boolean,
+    awbR: Float,
+    awbG: Float,
+    awbB: Float,
+    neutralR: Float,
+    neutralG: Float,
+    neutralB: Float,
+  ) -> Unit,
 ) {
   private val thread = HandlerThread("camera2-engine").apply { start() }
   private val handler = Handler(thread.looper)
@@ -63,7 +76,14 @@ class Camera2Engine(
     val minFocus = c.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE) ?: 0f
     val focal = c.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)?.firstOrNull() ?: 0f
     val aperture = c.get(CameraCharacteristics.LENS_INFO_AVAILABLE_APERTURES)?.firstOrNull() ?: 0f
+    val transform = c.get(CameraCharacteristics.SENSOR_COLOR_TRANSFORM1)
+    val colorMatrix = if (transform != null) {
+      FloatArray(9) { idx -> transform.getElement(idx / 3, idx % 3).toFloat() }
+    } else {
+      FloatArray(0)
+    }
     return mapOf(
+      "colorTransform" to colorMatrix,
       "focalLengthMm" to focal,
       "aperture" to aperture,
       "isoMin" to (isoRange?.lower ?: 100),
@@ -321,10 +341,32 @@ class Camera2Engine(
       val now = System.currentTimeMillis()
       if (now - lastEmit < 400) return
       lastEmit = now
-      val curIso = result.get(TotalCaptureResult.SENSOR_SENSITIVITY) ?: 0
-      val curExp = result.get(TotalCaptureResult.SENSOR_EXPOSURE_TIME) ?: 0L
-      val curFocus = result.get(TotalCaptureResult.LENS_FOCUS_DISTANCE) ?: 0f
-      onParams(curIso, curExp, curFocus, kelvin ?: 0, iso != null)
+
+      val gains = result.get(TotalCaptureResult.COLOR_CORRECTION_GAINS)
+      var nr = 0f
+      var ng = 0f
+      var nb = 0f
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        // 中性色点是 3 个 Rational(传感器空间的 R/G/B)
+        val np = result.get(TotalCaptureResult.SENSOR_NEUTRAL_COLOR_POINT)
+        if (np != null && np.size >= 3) {
+          nr = np[0].toFloat()
+          ng = np[1].toFloat()
+          nb = np[2].toFloat()
+        }
+      }
+
+      onParams(
+        result.get(TotalCaptureResult.SENSOR_SENSITIVITY) ?: 0,
+        result.get(TotalCaptureResult.SENSOR_EXPOSURE_TIME) ?: 0L,
+        result.get(TotalCaptureResult.LENS_FOCUS_DISTANCE) ?: 0f,
+        kelvin ?: 0,
+        iso != null,
+        gains?.red ?: 0f,
+        gains?.greenEven ?: 0f,
+        gains?.blue ?: 0f,
+        nr, ng, nb,
+      )
     }
   }
 

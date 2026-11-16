@@ -225,6 +225,9 @@ export default function SettingsScreen() {
           <Pressable onPress={() => router.push('/probe')} style={styles.probeRow} hitSlop={8}>
             <Text style={styles.linkText}>相机能力探测 ›</Text>
           </Pressable>
+          <Pressable onPress={() => router.push('/wb-test')} hitSlop={8}>
+            <Text style={styles.linkText}>白平衡标定 ›</Text>
+          </Pressable>
         </View>
       </ScrollView>
     </SafeAreaView>

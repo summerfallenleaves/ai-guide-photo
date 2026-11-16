@@ -25,6 +25,8 @@ export type Camera2Caps = {
 export type Camera2CapsFull = Camera2Caps & {
   focalLengthMm?: number;
   aperture?: number;
+  /** SENSOR_COLOR_TRANSFORM1(传感器 RGB→XYZ,行优先 9 个数) */
+  colorTransform?: number[];
 };
 
 export type Camera2Params = {
@@ -33,6 +35,14 @@ export type Camera2Params = {
   focusDiopters: number;
   kelvin: number;
   manual: boolean;
+  /** 相机 AWB 当场算出的补偿增益,标定白平衡时当参考 */
+  awbR?: number;
+  awbG?: number;
+  awbB?: number;
+  /** 传感器空间的中性色点(Android 10+) */
+  neutralR?: number;
+  neutralG?: number;
+  neutralB?: number;
 };
 
 type Camera2ModuleType = {

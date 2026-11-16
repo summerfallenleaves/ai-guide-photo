@@ -24,13 +24,19 @@ class Camera2Module(private val ctx: ReactApplicationContext) :
       ctx.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
         .emit("Camera2Ready", true)
     }
-    Camera2Bus.onParams = { iso, exposureNs, focus, kelvin, manual ->
+    Camera2Bus.onParams = { iso, exposureNs, focus, kelvin, manual, awbR, awbG, awbB, neutralR, neutralG, neutralB ->
       val map = Arguments.createMap().apply {
         putInt("iso", iso)
         putDouble("exposureNs", exposureNs.toDouble())
         putDouble("focusDiopters", focus.toDouble())
         putInt("kelvin", kelvin)
         putBoolean("manual", manual)
+        putDouble("awbR", awbR.toDouble())
+        putDouble("awbG", awbG.toDouble())
+        putDouble("awbB", awbB.toDouble())
+        putDouble("neutralR", neutralR.toDouble())
+        putDouble("neutralG", neutralG.toDouble())
+        putDouble("neutralB", neutralB.toDouble())
       }
       ctx.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
         .emit("Camera2Params", map)
@@ -102,6 +108,7 @@ class Camera2Module(private val ctx: ReactApplicationContext) :
         is Int -> map.putInt(k, v)
         is Long -> map.putDouble(k, v.toDouble())
         is Float -> map.putDouble(k, v.toDouble())
+        is FloatArray -> map.putArray(k, Arguments.fromList(v.map { it.toDouble() }))
         else -> map.putString(k, v.toString())
       }
     }

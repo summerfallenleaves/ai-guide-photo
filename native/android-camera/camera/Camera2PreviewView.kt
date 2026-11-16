@@ -11,7 +11,19 @@ import java.io.ByteArrayOutputStream
 
 /** 相机实时参数的出口:引擎 → 视图 → 模块 → JS */
 object Camera2Bus {
-  var onParams: ((iso: Int, exposureNs: Long, focusDiopters: Float, kelvin: Int, manual: Boolean) -> Unit)? = null
+  var onParams: ((
+    iso: Int,
+    exposureNs: Long,
+    focusDiopters: Float,
+    kelvin: Int,
+    manual: Boolean,
+    awbR: Float,
+    awbG: Float,
+    awbB: Float,
+    neutralR: Float,
+    neutralG: Float,
+    neutralB: Float,
+  ) -> Unit)? = null
   var onError: ((String) -> Unit)? = null
   var onReady: (() -> Unit)? = null
 }
@@ -64,8 +76,8 @@ class Camera2PreviewView(context: Context) : FrameLayout(context) {
           Camera2Bus.onReady?.invoke()
         }
       },
-      onParams = { iso, exp, focus, kelvin, manual ->
-        post { Camera2Bus.onParams?.invoke(iso, exp, focus, kelvin, manual) }
+      onParams = { iso, exp, focus, kelvin, manual, ar, ag, ab, nr, ng, nb ->
+        post { Camera2Bus.onParams?.invoke(iso, exp, focus, kelvin, manual, ar, ag, ab, nr, ng, nb) }
       },
     ).also { engine = it }
     e.attach(st, width.coerceAtLeast(1), height.coerceAtLeast(1), facing)
