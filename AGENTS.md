@@ -389,7 +389,8 @@ npx tsc --noEmit && npx eslint src --ext .ts,.tsx   # 先过类型和 lint
 
 - `expo-camera` / `expo-image` 已移除;相机权限改用 RN 内置 `PermissionsAndroid`,
   见 `src/hooks/use-camera-permission.ts`
-- 色温转 RGB 增益用的是普朗克黑体近似,白平衡可能偏色过头,需要按真机再标定
+- 白平衡已改为「CCT → 普朗克轨迹色度 → 用相机自己的 `SENSOR_COLOR_TRANSFORM1` 求逆换到传感器 RGB → 取倒数」,
+  不再假设 sRGB 原色。增益夹在 0.35~2.8。仍缺真机标定,极端色温(2500K/8000K)可能仍偏
 - AI 几乎总会给出 `params`,很少出现"照片很好、不给参数"的情况
 - iOS 完全未验证(没有真机,模拟器相机不可用)
 - 「建议历史」未实现

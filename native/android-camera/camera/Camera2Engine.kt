@@ -18,8 +18,7 @@ import android.util.Size
 import android.view.Surface
 import java.io.File
 import java.io.FileOutputStream
-import kotlin.math.ln
-import kotlin.math.pow
+import kotlin.math.abs
 
 /**
  * 基于 Camera2 的相机引擎:预览 + 拍照 + 手动参数。
@@ -385,26 +384,81 @@ class Camera2Engine(
     }
   }
 
-  /** 色温(K)转 RGB 增益,让画面在当前光源下还原白色 */
+  /**
+   * 色温(K)→ RGB 增益。
+   *
+   * 关键点:不能假设传感器是 sRGB 原色。先从 CCT 求出普朗克轨迹上的色度坐标,
+   * 再用相机自己的 SENSOR_COLOR_TRANSFORM1(传感器 RGB→XYZ)求逆,把白点换到
+   * **这颗传感器**的 RGB 空间,最后取倒数归一化得到增益。
+   *
+   * 拿不到矩阵时退回 sRGB 近似(老做法)。
+   */
   private fun kelvinToRggb(k: Int): RggbChannelVector {
-    val temp = k.coerceIn(2500, 8000) / 100.0
-    val r: Double
-    val g: Double
-    val b: Double
-    if (temp <= 66) {
-      r = 255.0
-      g = 99.4708025861 * ln(temp) - 161.1195681661
-      b = if (temp <= 19) 0.0 else 138.5177312231 * ln(temp - 10) - 305.0447927307
-    } else {
-      r = 329.698727446 * (temp - 60).pow(-0.1332047592)
-      g = 288.1221695283 * (temp - 60).pow(-0.0755148492)
-      b = 255.0
-    }
-    val rr = r.coerceIn(1.0, 255.0)
-    val gg = g.coerceIn(1.0, 255.0)
-    val bb = b.coerceIn(1.0, 255.0)
-    val gainR = (gg / rr).toFloat().coerceIn(0.2f, 5f)
-    val gainB = (gg / bb).toFloat().coerceIn(0.2f, 5f)
+    val cct = k.coerceIn(2500, 8000).toDouble()
+    val (cx, cy) = cctToChromaticity(cct)
+    if (cy <= 1e-6) return RggbChannelVector(1f, 1f, 1f, 1f)
+
+    val X = cx / cy
+    val Y = 1.0
+    val Z = (1.0 - cx - cy) / cy
+
+    val rgb = xyzToSensorRgb(X, Y, Z) ?: xyzToSrgb(X, Y, Z)
+    val r = rgb[0].coerceAtLeast(1e-4)
+    val g = rgb[1].coerceAtLeast(1e-4)
+    val b = rgb[2].coerceAtLeast(1e-4)
+
+    // 增益 = 让该通道还原为中性的补偿量;夹在常见硬件区间内,避免过冲
+    val gainR = (g / r).toFloat().coerceIn(0.35f, 2.8f)
+    val gainB = (g / b).toFloat().coerceIn(0.35f, 2.8f)
     return RggbChannelVector(gainR, 1f, 1f, gainB)
+  }
+
+  /** CCT → 普朗克轨迹色度坐标(CIE 1931 xy),Kim et al. 拟合 */
+  private fun cctToChromaticity(t: Double): Pair<Double, Double> {
+    val x = if (t <= 4000) {
+      -0.2661239e9 / (t * t * t) - 0.2343589e6 / (t * t) + 0.8776956e3 / t + 0.179910
+    } else {
+      -3.0258469e9 / (t * t * t) + 2.1070379e6 / (t * t) + 0.2226347e3 / t + 0.240390
+    }
+    val y = when {
+      t <= 2222 -> -1.1063814 * x * x * x - 1.34811020 * x * x + 2.18555832 * x - 0.20219683
+      t <= 4000 -> -0.9549476 * x * x * x - 1.37418593 * x * x + 2.09137015 * x - 0.16748867
+      else -> 3.0817580 * x * x * x - 5.87338670 * x * x + 3.75112997 * x - 0.37001483
+    }
+    return x to y
+  }
+
+  /** XYZ → 传感器 RGB(用相机自己的矩阵求逆);矩阵缺失或不可逆时返回 null */
+  private fun xyzToSensorRgb(X: Double, Y: Double, Z: Double): DoubleArray? {
+    val c = characteristics ?: return null
+    val transform = c.get(CameraCharacteristics.SENSOR_COLOR_TRANSFORM1) ?: return null
+    // 该 SDK 的 ColorSpaceTransform 只提供 getElement(row, col)
+    val m = DoubleArray(9) { idx -> transform.getElement(idx / 3, idx % 3).toDouble() }
+    val inv = invert3x3(m) ?: return null
+    return doubleArrayOf(
+      inv[0] * X + inv[1] * Y + inv[2] * Z,
+      inv[3] * X + inv[4] * Y + inv[5] * Z,
+      inv[6] * X + inv[7] * Y + inv[8] * Z,
+    )
+  }
+
+  private fun xyzToSrgb(X: Double, Y: Double, Z: Double) = doubleArrayOf(
+    3.2406 * X - 1.5372 * Y - 0.4986 * Z,
+    -0.9689 * X + 1.8758 * Y + 0.0415 * Z,
+    0.0557 * X - 0.2040 * Y + 1.0570 * Z,
+  )
+
+  private fun invert3x3(m: DoubleArray): DoubleArray? {
+    val a = m[0]; val b = m[1]; val c = m[2]
+    val d = m[3]; val e = m[4]; val f = m[5]
+    val g = m[6]; val h = m[7]; val i = m[8]
+    val det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g)
+    if (abs(det) < 1e-9) return null
+    val inv = 1.0 / det
+    return doubleArrayOf(
+      (e * i - f * h) * inv, (c * h - b * i) * inv, (b * f - c * e) * inv,
+      (f * g - d * i) * inv, (a * i - c * g) * inv, (c * d - a * f) * inv,
+      (d * h - e * g) * inv, (b * g - a * h) * inv, (a * e - b * d) * inv,
+    )
   }
 }
