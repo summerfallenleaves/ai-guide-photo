@@ -137,6 +137,7 @@ Expo 每个 SDK 版本都有破坏性改动,记忆里的 API 很可能已经改�
 | 用户设置 | AsyncStorage | `src/lib/settings.ts` + `useSettings()` |
 | API Key | SecureStore(加密) | `src/lib/secure-key.ts` + `useApiKey()` |
 | 刚拍的照片 / 点评状态 | 内存 | `src/lib/capture-store.ts` |
+| 拍照历史 | AsyncStorage + 文档目录 | `src/lib/history.ts` |
 
 三处都用 `useSyncExternalStore` 订阅,保存后相关页面自动刷新,**不要在各页面各存一份副本**。
 
@@ -393,7 +394,7 @@ npx tsc --noEmit && npx eslint src --ext .ts,.tsx   # 先过类型和 lint
   不再假设 sRGB 原色。增益夹在 0.35~2.8。仍缺真机标定,极端色温(2500K/8000K)可能仍偏
 - AI 几乎总会给出 `params`,很少出现"照片很好、不给参数"的情况
 - iOS 完全未验证(没有真机,模拟器相机不可用)
-- 「建议历史」未实现
+- 拍照历史已实现(`src/lib/history.ts` + `src/app/history.tsx`,上限 20 条,照片存文档目录)
 - 评分可复现性差:同一张图两次可能差 20 分以上,需要固定评分锚点或降 temperature
 - 鸿蒙 NEXT 未支持
 

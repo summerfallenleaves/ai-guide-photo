@@ -41,6 +41,7 @@ import { toAnalysisBase64 } from '@/lib/analysis-image';
 import type { PhotoMeta } from '@/lib/exif';
 import type { AdjustParams, LiveSuggestion } from '@/lib/types';
 import { setLastCapture, setReviewState, takePendingAdjust } from '@/lib/capture-store';
+import { addHistoryEntry, loadHistory, persistPhoto, updateHistoryEntry } from '@/lib/history';
 import { liveAnalysisEnabled, thinkingOf, useSettings } from '@/lib/settings';
 import { saveToAlbum } from '@/lib/media';
 import { palette, radius } from '@/lib/theme';
@@ -278,17 +279,36 @@ export default function CameraScreen() {
 
       const photoMeta = currentMeta();
 
+      // 复制一份到文档目录,历史记录和复盘页都用它(cache 会被系统清理)
+      const entryId = String(Date.now());
+      let stableUri = shotUri;
+      try {
+        stableUri = await persistPhoto(shotUri, entryId);
+      } catch {
+        // 复制失败就退回用原路径,不影响这次拍照
+      }
+
       // 照片先落地:立刻进复盘页,不让用户为了等点评而干站着
-      setLastCapture({ uri: shotUri, saved, meta: photoMeta });
+      setLastCapture({ uri: stableUri, saved, meta: photoMeta });
       setReviewState({ status: 'analyzing' });
       router.push({
         pathname: '/review',
-        params: { uri: shotUri, saved: saved ? '1' : '0' },
+        params: { uri: stableUri, saved: saved ? '1' : '0' },
       });
 
       // 点评在后台继续跑,结果推给复盘页
       const mySeq = ++reviewSeq.current;
-      const photoUri = shotUri;
+      const photoUri = stableUri;
+
+      await loadHistory();
+      addHistoryEntry({
+        id: entryId,
+        uri: stableUri,
+        createdAt: Date.now(),
+        savedToAlbum: saved,
+        meta: photoMeta,
+        status: 'analyzing',
+      });
 
       void (async () => {
           try {
@@ -314,9 +334,15 @@ export default function CameraScreen() {
                 ? { status: 'done', result }
                 : { status: 'failed', error: '服务返回了意外类型' },
             );
+            if (result.mode === 'capture') {
+              updateHistoryEntry(entryId, { status: 'done', result });
+            } else {
+              updateHistoryEntry(entryId, { status: 'failed', error: '服务返回了意外类型' });
+            }
         } catch (err) {
           if (mySeq !== reviewSeq.current) return;
           setReviewState({ status: 'failed', error: (err as Error).message });
+          updateHistoryEntry(entryId, { status: 'failed', error: (err as Error).message });
         }
       })();
     } catch (err) {

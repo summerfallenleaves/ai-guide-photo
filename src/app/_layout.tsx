@@ -27,6 +27,7 @@ export default function RootLayout() {
         <Stack.Screen name="settings" options={{ animation: 'slide_from_bottom' }} />
         <Stack.Screen name="probe" options={{ animation: 'slide_from_right' }} />
         <Stack.Screen name="wb-test" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="history" options={{ animation: 'slide_from_right' }} />
       </Stack>
     </GestureHandlerRootView>
   );

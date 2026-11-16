@@ -228,6 +228,9 @@ export default function SettingsScreen() {
           <Pressable onPress={() => router.push('/wb-test')} hitSlop={8}>
             <Text style={styles.linkText}>白平衡标定 ›</Text>
           </Pressable>
+          <Pressable onPress={() => router.push('/history')} hitSlop={8}>
+            <Text style={styles.linkText}>拍照历史 ›</Text>
+          </Pressable>
         </View>
       </ScrollView>
     </SafeAreaView>
