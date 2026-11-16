@@ -394,7 +394,8 @@ npx tsc --noEmit && npx eslint src --ext .ts,.tsx   # 先过类型和 lint
   不再假设 sRGB 原色。增益夹在 0.35~2.8。仍缺真机标定,极端色温(2500K/8000K)可能仍偏
 - AI 几乎总会给出 `params`,很少出现"照片很好、不给参数"的情况
 - iOS 完全未验证(没有真机,模拟器相机不可用)
-- 拍照历史已实现(`src/lib/history.ts` + `src/app/history.tsx`,上限 20 条,照片存文档目录)
+- 拍照历史已实现(`src/lib/history.ts` + `src/app/history.tsx`):照片存文档目录,
+  **按自然日保留最近 7 天**,列表按天分组;过期条目在启动和每次拍照时清理(含照片文件)
 - 评分可复现性差:同一张图两次可能差 20 分以上,需要固定评分锚点或降 temperature
 - 鸿蒙 NEXT 未支持
 

@@ -6,8 +6,10 @@ import type { PhotoMeta } from './exif';
 import type { CaptureResult } from './types';
 
 const STORAGE_KEY = 'history.v1';
-/** 最多保留多少条;超出后同时删掉对应照片文件 */
-const LIMIT = 20;
+/** 只保留最近多少天(按自然日算) */
+export const RETENTION_DAYS = 7;
+/** 安全上限:防止某天密集拍摄把存储撑爆,正常不会触发 */
+const MAX_ENTRIES = 200;
 const DIR_NAME = 'history';
 
 export type HistoryEntry = {
@@ -52,6 +54,30 @@ export async function persistPhoto(uri: string, id: string): Promise<string> {
   return dest.uri;
 }
 
+/** 过期判定:早于「今天往前数 RETENTION_DAYS 天的零点」就算过期 */
+const RETENTION_MS = RETENTION_DAYS * 24 * 60 * 60 * 1000;
+
+function isExpired(entry: HistoryEntry, now = Date.now()): boolean {
+  return now - entry.createdAt > RETENTION_MS;
+}
+
+/** 淘汰过期条目并删掉对应照片,返回是否有变化 */
+function pruneExpired(): boolean {
+  const now = Date.now();
+  const kept: HistoryEntry[] = [];
+  let changed = false;
+  for (const entry of entries) {
+    if (isExpired(entry, now)) {
+      deletePhoto(entry.uri);
+      changed = true;
+    } else {
+      kept.push(entry);
+    }
+  }
+  if (changed) entries = kept;
+  return changed;
+}
+
 function deletePhoto(uri: string) {
   try {
     const file = new File(uri);
@@ -75,6 +101,10 @@ export async function loadHistory(): Promise<void> {
               ? { ...e, status: 'failed' as const, error: '上次点评没有完成' }
               : e,
           );
+          // 超过保留期的记录在启动时清掉
+          if (pruneExpired()) {
+            void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(entries)).catch(() => {});
+          }
         }
       }
     })
@@ -101,10 +131,10 @@ export function useHistory(): HistoryEntry[] {
 }
 
 export function addHistoryEntry(entry: HistoryEntry) {
-  const next = [entry, ...entries];
-  const evicted = next.slice(LIMIT);
-  entries = next.slice(0, LIMIT);
-  evicted.forEach((e) => deletePhoto(e.uri));
+  entries = [entry, ...entries];
+  pruneExpired();
+  for (const dropped of entries.slice(MAX_ENTRIES)) deletePhoto(dropped.uri);
+  entries = entries.slice(0, MAX_ENTRIES);
   emit();
   persist();
 }
