@@ -285,15 +285,30 @@ npx eslint src --ext .ts,.tsx   # lint
 
 包名 `com.aiguide.photograph`,arm64-v8a,APK Signature Scheme v2 签名。
 
-### 重新打包
+### 重新打包(**每次都要升版本号**)
+
+统一用发布脚本,它会把版本号写进两个地方再构建:
 
 ```bash
-npx tsc --noEmit && npx eslint src --ext .ts,.tsx
-.toolchain/build.sh assembleRelease
+npx tsc --noEmit && npx eslint src --ext .ts,.tsx   # 先过类型和 lint
+.toolchain/release.sh 1.0.1                          # 版本号自增
+# 产出:assets/apk/ai-guide-photo-v1.0.1.apk
 ```
 
-- 首次构建约 12 分钟(C++ 要为 5 个原生模块各编一遍 arm64),**增量 2~4 分钟**
-- 只需验证能编译时可用 `assembleDebug`
+**命名规范**:`ai-guide-photo-v<主>.<次>.<修>.apk`,版本号只增不减。
+
+**versionCode 规则**:`主 × 10000 + 次 × 100 + 修`
+(1.0.0 → 10000,1.2.3 → 10203)。已装应用靠它判断升级。
+
+> ⚠️ **必须改两处,改一处没用**:
+> - `app.json` 的 `expo.version`(`android.versionCode`)——Expo 侧事实来源
+> - `android/app/build.gradle` 的 `versionCode` / `versionName`——**prebuild 之后 Gradle 只认这里**
+>
+> 只改 `app.json` 打出来的包版本号不会变。`release.sh` 已经处理了这件事。
+
+只需验证能否编译而不出包时,可以用 `.toolchain/build.sh assembleDebug`。
+
+- 首次构建约 12 分钟(C++ 要为 5 个原生模块各编一遍 arm64),**增量 20 秒~4 分钟**
 - `build.sh` 会自动导出 `JAVA_HOME` / `ANDROID_HOME` / `GRADLE_USER_HOME` / `ANDROID_USER_HOME`
 
 ### 工具链位置

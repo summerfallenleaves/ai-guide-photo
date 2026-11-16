@@ -221,6 +221,13 @@ export default function SettingsScreen() {
             keyboardType="url"
           />
           <Text style={styles.cardDesc}>留空用官方地址。以后如果把请求转接到自己的服务器,填在这里。</Text>
+
+          <Pressable onPress={() => router.push('/probe')} style={styles.probeRow} hitSlop={8}>
+            <Text style={styles.linkText}>相机能力探测 ›</Text>
+          </Pressable>
+          <Pressable onPress={() => router.push('/camera2-test')} hitSlop={8}>
+            <Text style={styles.linkText}>自研 Camera2 相机验证 ›</Text>
+          </Pressable>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -395,6 +402,12 @@ const styles = StyleSheet.create({
   },
   btnDisabled: {
     opacity: 0.4,
+  },
+  probeRow: {
+    marginTop: 4,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,255,255,0.08)',
   },
   linkText: {
     color: palette.accent,
