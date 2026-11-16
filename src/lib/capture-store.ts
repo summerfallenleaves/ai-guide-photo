@@ -1,3 +1,4 @@
+import type { PhotoMeta } from './exif';
 import type { CaptureResult } from './types';
 
 /**
@@ -10,6 +11,8 @@ export type LastCapture = {
   uri: string;
   saved: boolean;
   savedError?: string;
+  /** 相机记录的光学参数,用于在复盘页展示 */
+  meta?: PhotoMeta | null;
 };
 
 let last: LastCapture | null = null;

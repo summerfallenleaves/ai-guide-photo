@@ -158,6 +158,13 @@ export default function SettingsScreen() {
           onValueChange={(v) => updateSettings({ autoAnalyze: v })}
         />
 
+        <SwitchRow
+          title="参数建议"
+          description="读取相机记录的光学参数(焦距、光圈、ISO、快门),让建议能涉及拍摄参数而不是只看画面。"
+          value={settings.paramAdvice}
+          onValueChange={(v) => updateSettings({ paramAdvice: v })}
+        />
+
         <View style={[styles.card, !liveOn && styles.cardDisabled]}>
           <View style={styles.cardHeader}>
             <Text style={styles.cardTitle}>自动分析间隔</Text>

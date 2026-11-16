@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getLastCapture, getReviewState, subscribeReviewState } from '@/lib/capture-store';
+import { formatMeta } from '@/lib/exif';
 import { saveToAlbum } from '@/lib/media';
 import { palette, radius } from '@/lib/theme';
 
@@ -105,6 +106,10 @@ export default function ReviewScreen() {
               </View>
             ) : null}
           </View>
+
+          {formatMeta(captured?.meta) ? (
+            <Text style={styles.metaLine}>{formatMeta(captured?.meta)}</Text>
+          ) : null}
 
           {saveError ? <Text style={styles.saveErrorText}>保存失败:{saveError}</Text> : null}
 
@@ -225,6 +230,12 @@ const styles = StyleSheet.create({
     marginTop: 6,
     paddingHorizontal: 24,
     textAlign: 'center',
+  },
+  metaLine: {
+    color: palette.textFaint,
+    fontSize: 11.5,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
   },
   saveErrorText: {
     color: palette.danger,

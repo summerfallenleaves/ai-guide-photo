@@ -1,3 +1,4 @@
+import { describeMeta, type PhotoMeta } from './exif';
 import type { CaptureResult, Dim, LiveSuggestion } from './types';
 
 export type Thinking = 'disabled' | 'low' | 'high';
@@ -43,6 +44,22 @@ const CAPTURE_PROMPT = `这是用户刚按下快门拍下的一张照片。
 只输出 JSON,不要 markdown 代码块:
 {"score":整数,"headline":"不超过14个字","improvements":["不超过30个字","...","..."],"dims":["composition","light","pose","background","settings" 中的一个或多个],"confidence":0到1的小数}`;
 
+/**
+ * 把光学参数拼进 prompt。
+ * 只在真的拿到参数时才追加,并且明确要求"参数正常就别硬提"——否则模型会为了凑内容编问题。
+ */
+function withMeta(base: string, meta?: PhotoMeta | null): string {
+  const desc = describeMeta(meta);
+  if (!desc) return base;
+  return `${base}
+
+相机记录的光学参数(可参考):
+${desc}
+
+如果这些参数本身暴露了问题(ISO 偏高会有噪点、快门过慢容易糊、焦距太广边缘变形、闪光灯是硬光等),
+请把它作为一条改进项明确写出来,并说明下次怎么调。参数正常就不要硬提。`;
+}
+
 export class DeepSeekError extends Error {
   constructor(
     message: string,
@@ -56,6 +73,8 @@ export type AskOptions = {
   imageBase64: string;
   mode: 'live' | 'capture';
   thinking: Thinking;
+  /** 拍摄参数,没有就不传 */
+  meta?: PhotoMeta | null;
   apiKey: string;
   endpoint?: string;
   model?: string;
@@ -76,7 +95,7 @@ export async function askDeepSeek(opts: AskOptions): Promise<AnalyzeOutcome> {
       {
         role: 'user',
         content: [
-          { type: 'text', text: isCapture ? CAPTURE_PROMPT : LIVE_PROMPT },
+          { type: 'text', text: withMeta(isCapture ? CAPTURE_PROMPT : LIVE_PROMPT, opts.meta) },
           {
             type: 'image_url',
             image_url: { url: `data:image/jpeg;base64,${opts.imageBase64}`, detail: 'high' },

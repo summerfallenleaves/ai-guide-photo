@@ -1,4 +1,5 @@
 import { askDeepSeek, DeepSeekError, DEFAULT_ENDPOINT, type Thinking } from './deepseek';
+import type { PhotoMeta } from './exif';
 import { getCachedApiKey } from './secure-key';
 import type { AnalysisResult } from './types';
 
@@ -8,6 +9,8 @@ export type AnalyzeOptions = {
   thinking?: Thinking;
   endpoint?: string;
   timeoutMs?: number;
+  /** 相机记录的光学参数 */
+  meta?: PhotoMeta | null;
 };
 
 /**
@@ -30,6 +33,7 @@ export async function analyze(
     imageBase64,
     mode,
     thinking: opts.thinking ?? 'disabled',
+    meta: opts.meta,
     apiKey,
     endpoint: opts.endpoint,
     timeoutMs: opts.timeoutMs,

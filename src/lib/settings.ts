@@ -12,6 +12,8 @@ export type AppSettings = {
   intervalSec: number;
   /** DeepSeek 接口地址(留空用官方地址) */
   apiEndpoint: string;
+  /** 读取相机记录的光学参数,让建议能涉及焦距/ISO/快门 */
+  paramAdvice: boolean;
 };
 
 export const INTERVAL_MIN = 3;
@@ -22,6 +24,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   autoAnalyze: true,
   intervalSec: 3,
   apiEndpoint: '',
+  paramAdvice: true,
 };
 
 const STORAGE_KEY = 'ai-guide-photo:settings:v1';
@@ -71,6 +74,7 @@ function sanitize(input: Partial<AppSettings>): AppSettings {
       ? Math.min(INTERVAL_MAX, Math.max(INTERVAL_MIN, Math.round(interval)))
       : DEFAULT_SETTINGS.intervalSec,
     apiEndpoint: typeof input.apiEndpoint === 'string' ? input.apiEndpoint.trim() : DEFAULT_SETTINGS.apiEndpoint,
+    paramAdvice: typeof input.paramAdvice === 'boolean' ? input.paramAdvice : DEFAULT_SETTINGS.paramAdvice,
   };
 }
 

@@ -24,6 +24,7 @@ import { useOrientation } from '@/hooks/use-orientation';
 import { analyze } from '@/lib/api';
 import { useApiKey } from '@/hooks/use-api-key';
 import { toAnalysisBase64 } from '@/lib/analysis-image';
+import { extractPhotoMeta } from '@/lib/exif';
 import { setLastCapture, setReviewState } from '@/lib/capture-store';
 import { liveAnalysisEnabled, thinkingOf, useSettings } from '@/lib/settings';
 import { saveToAlbum } from '@/lib/media';
@@ -89,6 +90,7 @@ export default function CameraScreen() {
           quality: 0.3,
           base64: true,
           shutterSound: false,
+          exif: settings.paramAdvice,
         });
       });
       if (!shot?.base64) throw new Error('抓帧失败');
@@ -96,7 +98,11 @@ export default function CameraScreen() {
       // 取景建议一律用低思考强度:它每几秒就要刷一次,不能被推理拖住
       // 取景建议一律关闭思考:实测 thinking=low 仍会产生 300~800 个思维链 token、
       // 单次 3.5~8 秒,而 disabled 只要 1.6~1.8 秒。取景不能拿延迟换质量。
-      const result = await analyze(shot.base64, 'live', { thinking: 'disabled', endpoint: settings.apiEndpoint });
+      const result = await analyze(shot.base64, 'live', {
+        thinking: 'disabled',
+        endpoint: settings.apiEndpoint,
+        meta: settings.paramAdvice ? extractPhotoMeta(shot.exif) : null,
+      });
       if (result.mode === 'live') {
         setSuggestion(result);
         setError(null);
@@ -110,7 +116,7 @@ export default function CameraScreen() {
       analyzeBusyRef.current = false;
       setAnalyzing(false);
     }
-  }, [ready, withCameraLock, settings.apiEndpoint]);
+  }, [ready, withCameraLock, settings.apiEndpoint, settings.paramAdvice]);
 
   // 手动重试:清掉暂停状态并立刻跑一次
   const retryNow = useCallback(() => {
@@ -147,7 +153,7 @@ export default function CameraScreen() {
       const shot = await withCameraLock(() => {
         const cam = cameraRef.current;
         if (!cam) throw new Error('相机还没准备好');
-        return cam.takePictureAsync({ quality: 0.9 });
+        return cam.takePictureAsync({ quality: 0.9, exif: settings.paramAdvice });
       });
       if (!shot?.uri) throw new Error('拍照失败');
 
@@ -156,8 +162,10 @@ export default function CameraScreen() {
       const saved = saveResult.ok;
       if (!saved) console.warn('[capture] 保存相册失败:', saveResult.error);
 
+      const photoMeta = settings.paramAdvice ? extractPhotoMeta(shot.exif) : null;
+
       // 照片先落地:立刻进复盘页,不让用户为了等点评而干站着
-      setLastCapture({ uri: shot.uri, saved });
+      setLastCapture({ uri: shot.uri, saved, meta: photoMeta });
       setReviewState({ status: 'analyzing' });
       router.push({
         pathname: '/review',
@@ -178,6 +186,7 @@ export default function CameraScreen() {
             const result = await analyze(base64, 'capture', {
               thinking: thinkingOf(settings),
               endpoint: settings.apiEndpoint,
+              meta: photoMeta,
             });
             if (mySeq !== reviewSeq.current) return; // 已经又拍了一张,丢弃旧结果
             setReviewState(
