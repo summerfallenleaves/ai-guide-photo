@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FlashButton } from '@/components/flash-button';
 import { GridOverlay } from '@/components/grid-overlay';
+import { AUTO_SELECTION, ProCameraPanel, type ProSelection } from '@/components/pro-camera-panel';
 import { LevelBadge } from '@/components/level-badge';
 import { SuggestionCard } from '@/components/suggestion-card';
 import { useTilt } from '@/hooks/use-tilt';
@@ -17,6 +18,7 @@ import { useCameraPermission } from '@/hooks/use-camera-permission';
 import {
   addErrorListener,
   focusAt,
+  setExposureCompensation,
   setFlashMode,
   setZoom as setZoomValue,
   formatShutterNs,
@@ -75,6 +77,13 @@ export default function CameraScreen() {
   const [flashMode, setFlashModeState] = useState<FlashMode>('off');
   /** 相机硬件能力(最大变焦、闪光灯、曝光补偿范围) */
   const [caps, setCaps] = useState<Camera2CapsFull | null>(null);
+  /** 定时器:0 = 关闭,3 / 10 秒 */
+  const [timerSec, setTimerSec] = useState(0);
+  /** 正在倒计时时显示剩余秒数 */
+  const [countdown, setCountdown] = useState<number | null>(null);
+  /** 专业面板是否展开 */
+  const [proOpen, setProOpen] = useState(false);
+  const [proSelection, setProSelection] = useState<ProSelection>(AUTO_SELECTION);
   /** 连续失败后暂停自动分析,直到用户手动重试(不改用户设置) */
   const [paused, setPaused] = useState(false);
 
@@ -338,6 +347,34 @@ export default function CameraScreen() {
 
   /* eslint-enable react-hooks/refs, react-hooks/preserve-manual-memoization */
 
+  /** 定时器三态循环:关 → 3s → 10s → 关 */
+  const cycleTimer = useCallback(() => {
+    setTimerSec((prev) => (prev === 0 ? 3 : prev === 3 ? 10 : 0));
+  }, [setTimerSec]);
+
+  /** 专业面板的每一档立即生效 */
+  const applyProSelection = useCallback((sel: ProSelection) => {
+    setProSelection(sel);
+    setExposureCompensation(sel.ev ?? 0);
+
+    // 手动曝光要求 ISO 与快门同时有值;只选了一个就用当前实测值补齐
+    let iso = sel.iso;
+    let shutterNs = sel.shutterNs;
+    if (iso != null && shutterNs == null) {
+      shutterNs = Math.round(paramsRef.current?.exposureNs ?? 0) || null;
+    }
+    if (shutterNs != null && iso == null) {
+      iso = paramsRef.current?.iso ?? null;
+    }
+
+    setManual({
+      iso,
+      exposureNs: shutterNs,
+      focusDiopters: sel.focusDiopters,
+      kelvin: sel.kelvin,
+    });
+  }, [setProSelection]);
+
   /** 闪光灯三态循环 */
   const cycleFlash = useCallback(() => {
     setFlashModeState((prev) => {
@@ -462,6 +499,36 @@ export default function CameraScreen() {
     }
   }, [flash, ready, settings, currentMeta, setCapturing, setError]);
 
+  /** 倒计时进行中:每秒减一,到 0 自动拍 */
+  useEffect(() => {
+    if (countdown === null) return;
+    if (countdown <= 0) {
+      // 放到下一个任务里执行,避免在 effect 里同步 setState
+      const done = setTimeout(() => {
+        setCountdown(null);
+        void handleCapture();
+      }, 0);
+      return () => clearTimeout(done);
+    }
+    const timer = setTimeout(() => setCountdown((v) => (v === null ? null : v - 1)), 1000);
+    return () => clearTimeout(timer);
+  }, [countdown, handleCapture]);
+
+  /** 快门入口:有定时就先倒计时 */
+  const onShutterPress = useCallback(() => {
+    if (countdown !== null) {
+      setCountdown(null);
+      return;
+    }
+    if (timerSec > 0) {
+      setCountdown(timerSec);
+      return;
+    }
+    void handleCapture();
+  }, [countdown, timerSec, setCountdown, handleCapture]);
+
+
+
   if (!permission.checked) {
     return (
       <View style={styles.center}>
@@ -534,6 +601,14 @@ export default function CameraScreen() {
         />
       ) : null}
 
+      {/* 定时器倒计时 */}
+      {countdown !== null ? (
+        <Pressable style={styles.countdownLayer} onPress={() => setCountdown(null)}>
+          <Text style={styles.countdownText}>{countdown}</Text>
+          <Text style={styles.countdownHint}>点任意处取消</Text>
+        </Pressable>
+      ) : null}
+
       {/* 变焦倍率提示:不在 1x 时才显示 */}
       {zoom > 1.05 ? (
         <View pointerEvents="none" style={styles.zoomPill}>
@@ -555,8 +630,11 @@ export default function CameraScreen() {
             </Text>
           </View>
           <View style={styles.topRight}>
-            <LevelBadge tilt={tilt} />
+            <Pressable style={styles.topChip} onPress={() => setShowGrid((v) => !v)} hitSlop={8}>
+              <Text style={[styles.topChipText, showGrid && styles.topChipTextOn]}>网格</Text>
+            </Pressable>
             {caps?.hasFlash ? <FlashButton mode={flashMode} onPress={cycleFlash} /> : null}
+            <LevelBadge tilt={tilt} />
           </View>
         </View>
 
@@ -577,13 +655,20 @@ export default function CameraScreen() {
           />
 
           <View style={styles.controls} pointerEvents="box-none">
-            <Pressable style={styles.sideButton} onPress={() => setShowGrid((v) => !v)} hitSlop={10}>
-              <Text style={[styles.sideButtonText, showGrid && { color: palette.accent }]}>网格</Text>
-            </Pressable>
+            <View style={styles.leftControls}>
+              <Pressable style={styles.sideButton} onPress={() => setProOpen((v) => !v)} hitSlop={10}>
+                <Text style={[styles.sideButtonText, proOpen && { color: palette.accent }]}>专业</Text>
+              </Pressable>
+              <Pressable style={styles.sideButton} onPress={cycleTimer} hitSlop={10}>
+                <Text style={[styles.sideButtonText, timerSec > 0 && { color: palette.accent }]}>
+                  {timerSec === 0 ? '定时' : `${timerSec}s`}
+                </Text>
+              </Pressable>
+            </View>
 
             <Pressable
               style={[styles.shutter, capturing && { opacity: 0.6 }]}
-              onPress={() => void handleCapture()}
+              onPress={onShutterPress}
               disabled={capturing || !ready}>
               <View style={styles.shutterInner} />
             </Pressable>
@@ -597,6 +682,15 @@ export default function CameraScreen() {
           </View>
 
           <Text style={styles.hint}>直连 DeepSeek · 请求由本机发起</Text>
+
+          <ProCameraPanel
+            visible={proOpen}
+            caps={caps}
+            liveParams={liveParams}
+            selection={proSelection}
+            onChange={applyProSelection}
+            onClose={() => setProOpen(false)}
+          />
         </View>
       </SafeAreaView>
 
@@ -767,6 +861,34 @@ const styles = StyleSheet.create({
     color: palette.accent,
     ...tabularNums,
   },
+  countdownLayer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    gap: spacing.md,
+  },
+  countdownText: {
+    ...type.display,
+    fontSize: 72,
+    color: palette.text,
+  },
+  countdownHint: { ...type.caption, color: palette.textDim },
+  topChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: palette.border,
+    backgroundColor: palette.scrim,
+  },
+  topChipText: { ...type.caption, color: palette.textDim },
+  topChipTextOn: { color: palette.accent, fontWeight: weight.bold },
+  leftControls: { alignItems: 'flex-start', gap: spacing.md },
   appliedPill: {
     alignSelf: 'center',
     paddingHorizontal: spacing.xl,
