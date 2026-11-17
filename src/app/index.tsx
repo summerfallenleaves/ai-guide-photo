@@ -48,6 +48,10 @@ import { palette, radius, spacing, tabularNums, type, weight } from '@/lib/theme
 const MAX_CONSECUTIVE_FAILURES = 3;
 /** 预览填充比例,实测调出来的默认值 */
 const DEFAULT_PREVIEW_FILL = 0.25;
+/** 语音模式下两次分析的最小间隔:防止 TTS 秒回/失败导致连续轰炸接口 */
+const VOICE_MIN_ANALYZE_GAP_MS = 1500;
+/** 语音模式下定时器的兜底周期(真正的节奏由播报驱动) */
+const VOICE_FALLBACK_TICK_MS = 10000;
 
 export default function CameraScreen() {
   const permission = useCameraPermission();
@@ -312,9 +316,15 @@ export default function CameraScreen() {
    */
   const speakingRef = useRef(false);
   const speakingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastAnalyzeAtRef = useRef(0);
+  const followUpRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const stopSpeaking = useCallback(() => {
     speakingRef.current = false;
+    if (followUpRef.current) {
+      clearTimeout(followUpRef.current);
+      followUpRef.current = null;
+    }
     if (speakingTimerRef.current) {
       clearTimeout(speakingTimerRef.current);
       speakingTimerRef.current = null;
@@ -327,6 +337,7 @@ export default function CameraScreen() {
     if (!ready || analyzeBusyRef.current || captureBusyRef.current) return;
     // 正在念上一条:等它念完,不要中途换内容
     if (speakingRef.current) return;
+    lastAnalyzeAtRef.current = Date.now();
 
     analyzeBusyRef.current = true;
     setAnalyzing(true);
@@ -480,8 +491,14 @@ export default function CameraScreen() {
         clearTimeout(speakingTimerRef.current);
         speakingTimerRef.current = null;
       }
-      // 说完立刻补一次分析,不用干等到下一个间隔
-      if (focused && appActive) void runLiveAnalysis();
+      // 说完立刻补一次分析,不用干等到下一个间隔;
+      // 但要和上一次分析隔开,避免 TTS 秒回时陷入连续请求
+      const wait = Math.max(0, VOICE_MIN_ANALYZE_GAP_MS - (Date.now() - lastAnalyzeAtRef.current));
+      if (followUpRef.current) clearTimeout(followUpRef.current);
+      followUpRef.current = setTimeout(() => {
+        followUpRef.current = null;
+        if (focused && appActive) void runLiveAnalysis();
+      }, wait);
     };
 
     void Speech.stop().then(() => {
@@ -523,12 +540,13 @@ export default function CameraScreen() {
   useEffect(() => {
     if (!liveOn || paused || !focused || !appActive || !ready || !keyReady || !permission.granted) return;
     const warmup = setTimeout(() => void runLiveAnalysis(), 700);
-    const timer = setInterval(() => void runLiveAnalysis(), settings.intervalSec * 1000);
+    const tickMs = settings.voiceGuide ? VOICE_FALLBACK_TICK_MS : settings.intervalSec * 1000;
+    const timer = setInterval(() => void runLiveAnalysis(), tickMs);
     return () => {
       clearTimeout(warmup);
       clearInterval(timer);
     };
-  }, [liveOn, paused, focused, appActive, ready, keyReady, permission.granted, runLiveAnalysis, settings.intervalSec, setPaused]);
+  }, [liveOn, paused, focused, appActive, ready, keyReady, permission.granted, runLiveAnalysis, settings.intervalSec, settings.voiceGuide, setPaused]);
 
   const handleCapture = useCallback(async () => {
     if (!ready || captureBusyRef.current) return;

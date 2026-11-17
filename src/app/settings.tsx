@@ -74,7 +74,11 @@ export default function SettingsScreen() {
         <View style={styles.summary}>
           <Text style={styles.summaryTitle}>当前生效</Text>
           <Text style={styles.summaryLine}>
-            {liveOn ? `自动分析:每 ${settings.intervalSec} 秒` : '自动分析:关闭'}
+            {liveOn
+              ? settings.voiceGuide
+                ? '自动分析:跟语音节奏'
+                : `自动分析:每 ${settings.intervalSec} 秒`
+              : '自动分析:关闭'}
           </Text>
           <Text style={styles.versionText}>版本 {Constants.expoConfig?.version ?? '—'}</Text>
         </View>
@@ -175,17 +179,23 @@ export default function SettingsScreen() {
           onValueChange={(v) => updateSettings({ paramAdvice: v })}
         />
 
-        <View style={[styles.card, !liveOn && styles.cardDisabled]}>
+        <View style={[styles.card, (!liveOn || settings.voiceGuide) && styles.cardDisabled]}>
           <View style={styles.cardHeader}>
             <Text style={styles.cardTitle}>自动分析间隔</Text>
-            <Text style={styles.cardValue}>{settings.intervalSec} 秒</Text>
+            <Text style={styles.cardValue}>
+              {settings.voiceGuide ? '由语音节奏决定' : `${settings.intervalSec} 秒`}
+            </Text>
           </View>
-          <Text style={styles.cardDesc}>间隔太短会明显耗电发热,建议 3~5 秒。</Text>
+          <Text style={styles.cardDesc}>
+            {settings.voiceGuide
+              ? '语音播报开启时这个设置不生效:建议会等语音念完再刷新,否则话说到一半就被顶掉。'
+              : '间隔太短会明显耗电发热,建议 3~5 秒。'}
+          </Text>
 
           <View style={styles.stepperRow}>
             <StepperButton
               label="−"
-              disabled={!liveOn || settings.intervalSec <= INTERVAL_MIN}
+              disabled={!liveOn || settings.voiceGuide || settings.intervalSec <= INTERVAL_MIN}
               onPress={() => updateSettings({ intervalSec: settings.intervalSec - 1 })}
             />
             <View style={styles.track}>
@@ -195,16 +205,20 @@ export default function SettingsScreen() {
                 return (
                   <Pressable
                     key={value}
-                    disabled={!liveOn}
+                    disabled={!liveOn || settings.voiceGuide}
                     onPress={() => updateSettings({ intervalSec: value })}
-                    style={[styles.tick, active && styles.tickActive, !liveOn && styles.tickDisabled]}
+                    style={[
+                      styles.tick,
+                      active && styles.tickActive,
+                      (!liveOn || settings.voiceGuide) && styles.tickDisabled,
+                    ]}
                   />
                 );
               })}
             </View>
             <StepperButton
               label="+"
-              disabled={!liveOn || settings.intervalSec >= INTERVAL_MAX}
+              disabled={!liveOn || settings.voiceGuide || settings.intervalSec >= INTERVAL_MAX}
               onPress={() => updateSettings({ intervalSec: settings.intervalSec + 1 })}
             />
           </View>
