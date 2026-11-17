@@ -3,16 +3,14 @@ import * as Haptics from 'expo-haptics';
 import { router, useFocusEffect } from 'expo-router';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, AppState, Linking, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Animated, AppState, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FlashButton } from '@/components/flash-button';
 import { GridOverlay } from '@/components/grid-overlay';
 import { LevelBadge } from '@/components/level-badge';
-import { RotateButton } from '@/components/rotate-button';
 import { SuggestionCard } from '@/components/suggestion-card';
 import { useTilt } from '@/hooks/use-tilt';
-import { useOrientation } from '@/hooks/use-orientation';
 import { analyze } from '@/lib/api';
 import { useApiKey } from '@/hooks/use-api-key';
 import { useCameraPermission } from '@/hooks/use-camera-permission';
@@ -121,11 +119,6 @@ export default function CameraScreen() {
   const flash = useMemo(() => new Animated.Value(0), []);
 
   const tilt = useTilt(focused && appActive && ready);
-  const { isLandscape, locked, toggle: toggleOrientation } = useOrientation();
-  const { width: screenWidth } = useWindowDimensions();
-  // 横屏右侧浮动列的宽度
-  const panelWidth = Math.min(Math.max(screenWidth * 0.34, 230), 320);
-
   /** 把 AI 建议的参数合并进当前状态并下发给相机 */
   const applyAdjust = useCallback((adj: AdjustParams) => {
     const cur = paramsRef.current;
@@ -548,20 +541,32 @@ export default function CameraScreen() {
         </View>
       ) : null}
 
-      {isLandscape ? (
-        /* 横屏:右侧浮动一列,背景透明,元素各自带半透明底,和竖屏卡片是同一套视觉语言 */
-        <SafeAreaView
-          style={[styles.landscapePanel, { width: panelWidth }]}
-          edges={['top', 'bottom', 'right']}
-          pointerEvents="box-none">
-          <View style={styles.panelTopRow} pointerEvents="box-none">
+      <SafeAreaView
+        style={[StyleSheet.absoluteFill, styles.overlay]}
+        edges={['top', 'bottom']}
+        pointerEvents="box-none">
+        <View style={styles.topRow} pointerEvents="box-none">
+          <View style={styles.brand}>
+            <Text style={styles.brandText}>AI 拍照引导</Text>
+            <Text style={styles.brandSub} numberOfLines={1}>
+              {liveParams
+                ? `ISO ${liveParams.iso} · ${formatShutterNs(liveParams.exposureNs)}${liveParams.manual ? ' · 手动' : ''}`
+                : '正在读取相机参数…'}
+            </Text>
+          </View>
+          <View style={styles.topRight}>
             <LevelBadge tilt={tilt} />
             {caps?.hasFlash ? <FlashButton mode={flashMode} onPress={cycleFlash} /> : null}
-            <RotateButton onPress={() => void toggleOrientation()} locked={locked} />
           </View>
+        </View>
 
+        <View style={styles.bottomBlock} pointerEvents="box-none">
+          {appliedNote ? (
+            <View style={styles.appliedPill}>
+              <Text style={styles.appliedText}>{appliedNote}</Text>
+            </View>
+          ) : null}
           <SuggestionCard
-            compact
             suggestion={suggestion}
             analyzing={analyzing}
             error={error}
@@ -571,16 +576,16 @@ export default function CameraScreen() {
             onRefresh={retryNow}
           />
 
-          <View style={styles.controlsCompact} pointerEvents="box-none">
+          <View style={styles.controls} pointerEvents="box-none">
             <Pressable style={styles.sideButton} onPress={() => setShowGrid((v) => !v)} hitSlop={10}>
               <Text style={[styles.sideButtonText, showGrid && { color: palette.accent }]}>网格</Text>
             </Pressable>
 
             <Pressable
-              style={[styles.shutterCompact, capturing && { opacity: 0.6 }]}
+              style={[styles.shutter, capturing && { opacity: 0.6 }]}
               onPress={() => void handleCapture()}
               disabled={capturing || !ready}>
-              <View style={styles.shutterInnerCompact} />
+              <View style={styles.shutterInner} />
             </Pressable>
 
             <Pressable
@@ -590,67 +595,10 @@ export default function CameraScreen() {
               <Text style={styles.sideButtonText}>翻转</Text>
             </Pressable>
           </View>
-        </SafeAreaView>
-      ) : (
-        <SafeAreaView
-          style={[StyleSheet.absoluteFill, styles.overlay]}
-          edges={['top', 'bottom']}
-          pointerEvents="box-none">
-          <View style={styles.topRow} pointerEvents="box-none">
-            <View style={styles.brand}>
-              <Text style={styles.brandText}>AI 拍照引导</Text>
-              <Text style={styles.brandSub} numberOfLines={1}>
-                {liveParams
-                  ? `ISO ${liveParams.iso} · ${formatShutterNs(liveParams.exposureNs)}${liveParams.manual ? ' · 手动' : ''}`
-                  : '正在读取相机参数…'}
-              </Text>
-            </View>
-            <View style={styles.topRight}>
-              <LevelBadge tilt={tilt} />
-              <RotateButton onPress={() => void toggleOrientation()} locked={locked} />
-            </View>
-          </View>
 
-          <View style={styles.bottomBlock} pointerEvents="box-none">
-            {appliedNote ? (
-              <View style={styles.appliedPill}>
-                <Text style={styles.appliedText}>{appliedNote}</Text>
-              </View>
-            ) : null}
-            <SuggestionCard
-              suggestion={suggestion}
-              analyzing={analyzing}
-              error={error}
-              liveOn={liveOn}
-              paused={paused}
-              onOpenSettings={() => router.push('/settings')}
-              onRefresh={retryNow}
-            />
-
-            <View style={styles.controls} pointerEvents="box-none">
-              <Pressable style={styles.sideButton} onPress={() => setShowGrid((v) => !v)} hitSlop={10}>
-                <Text style={[styles.sideButtonText, showGrid && { color: palette.accent }]}>网格</Text>
-              </Pressable>
-
-              <Pressable
-                style={[styles.shutter, capturing && { opacity: 0.6 }]}
-                onPress={() => void handleCapture()}
-                disabled={capturing || !ready}>
-                <View style={styles.shutterInner} />
-              </Pressable>
-
-              <Pressable
-                style={styles.sideButton}
-                onPress={() => setFacing((f) => (f === 'back' ? 'front' : 'back'))}
-                hitSlop={10}>
-                <Text style={styles.sideButtonText}>翻转</Text>
-              </Pressable>
-            </View>
-
-            <Text style={styles.hint}>直连 DeepSeek · 请求由本机发起</Text>
-          </View>
-        </SafeAreaView>
-      )}
+          <Text style={styles.hint}>直连 DeepSeek · 请求由本机发起</Text>
+        </View>
+      </SafeAreaView>
 
       <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.flash, { opacity: flash }]} />
     </View>
