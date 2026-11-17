@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 
-import { palette, radius } from '@/lib/theme';
+import { palette, radius, spacing, type, weight, tabularNums } from '@/lib/theme';
 
 const LEVEL_THRESHOLD = 1.5;
 
@@ -11,7 +11,7 @@ export function LevelBadge({ tilt }: { tilt: number | null }) {
   const color = unknown ? palette.textFaint : level ? palette.good : palette.warn;
 
   return (
-    <View style={[styles.root, { borderColor: level ? 'rgba(74,222,128,0.55)' : palette.border }]}>
+    <View style={[styles.root, { borderColor: level ? palette.goodBorder : palette.border }]}>
       <View style={styles.tiltTrack}>
         <View
           style={[
@@ -38,27 +38,27 @@ const styles = StyleSheet.create({
   root: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: palette.scrim,
   },
   tiltTrack: {
-    width: 18,
-    height: 12,
+    width: spacing.xxl + spacing.xxs,
+    height: spacing.xl,
     alignItems: 'center',
     justifyContent: 'center',
   },
   tiltBar: {
-    width: 14,
-    height: 2,
+    width: spacing.xl + spacing.xxs,
+    height: spacing.xxs,
     borderRadius: 1,
   },
   label: {
-    fontSize: 11,
-    fontWeight: '600',
-    fontVariant: ['tabular-nums'],
+    fontSize: type.caption.fontSize,
+    fontWeight: weight.semibold,
+    ...tabularNums,
   },
 });

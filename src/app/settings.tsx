@@ -14,7 +14,7 @@ import {
   updateSettings,
   useSettings,
 } from '@/lib/settings';
-import { palette, radius } from '@/lib/theme';
+import { palette, radius, spacing, type, weight } from '@/lib/theme';
 
 export default function SettingsScreen() {
   const settings = useSettings();
@@ -112,7 +112,7 @@ export default function SettingsScreen() {
                 value={keyInput}
                 onChangeText={setKeyInput}
                 placeholder="sk-..."
-                placeholderTextColor="rgba(255,255,255,0.25)"
+                placeholderTextColor="palette.fillStrong"
                 autoCapitalize="none"
                 autoCorrect={false}
                 secureTextEntry
@@ -217,7 +217,7 @@ export default function SettingsScreen() {
             onChangeText={setEndpointInput}
             onEndEditing={() => updateSettings({ apiEndpoint: endpointInput })}
             placeholder={DEFAULT_ENDPOINT}
-            placeholderTextColor="rgba(255,255,255,0.25)"
+            placeholderTextColor="palette.fillStrong"
             autoCapitalize="none"
             autoCorrect={false}
             keyboardType="url"
@@ -262,8 +262,8 @@ function SwitchRow({
           value={value}
           onValueChange={onValueChange}
           disabled={disabled}
-          trackColor={{ false: 'rgba(255,255,255,0.16)', true: 'rgba(91,200,255,0.55)' }}
-          thumbColor={value ? '#FFFFFF' : 'rgba(255,255,255,0.75)'}
+          trackColor={{ false: 'palette.border', true: palette.accentBorder }}
+          thumbColor={value ? palette.text : 'palette.textSoft'}
         />
       </View>
       <Text style={styles.cardDesc}>{description}</Text>
@@ -293,35 +293,35 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: spacing.xxl,
+    paddingVertical: spacing.xl,
   },
   backButton: {
     width: 64,
   },
   backText: {
     color: palette.accent,
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: type.body.fontSize,
+    fontWeight: weight.semibold,
   },
   title: {
     color: palette.text,
-    fontSize: 17,
-    fontWeight: '700',
+    fontSize: type.headline.fontSize,
+    fontWeight: weight.bold,
   },
   content: {
-    paddingHorizontal: 16,
-    paddingBottom: 32,
-    gap: 12,
+    paddingHorizontal: spacing.xxl,
+    paddingBottom: spacing.huge,
+    gap: spacing.xl,
   },
   card: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: palette.fillSubtle,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: palette.border,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    gap: 8,
+    paddingHorizontal: spacing.xxl,
+    paddingVertical: spacing.xl,
+    gap: spacing.md,
   },
   cardDisabled: {
     opacity: 0.45,
@@ -333,107 +333,107 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     color: palette.text,
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: type.headline.fontSize,
+    fontWeight: weight.semibold,
   },
   cardValue: {
     color: palette.accent,
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: type.body.fontSize,
+    fontWeight: weight.bold,
     fontVariant: ['tabular-nums'],
   },
   cardValueSmall: {
     color: palette.textFaint,
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: type.caption.fontSize,
+    fontWeight: weight.bold,
   },
   cardDesc: {
     color: palette.textDim,
-    fontSize: 12.5,
+    fontSize: type.subhead.fontSize,
     lineHeight: 19,
   },
   note: {
     color: palette.warn,
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: type.subhead.fontSize,
+    fontWeight: weight.semibold,
   },
   keyValue: {
     color: palette.text,
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: type.headline.fontSize,
+    fontWeight: weight.bold,
     letterSpacing: 1,
     fontVariant: ['tabular-nums'],
   },
   input: {
-    marginTop: 2,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    marginTop: spacing.xxs,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.lg,
     borderRadius: radius.md,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: 'palette.scrimStrong',
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.18)',
+    borderColor: 'palette.border',
     color: palette.text,
-    fontSize: 14,
+    fontSize: type.body.fontSize,
   },
   actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginTop: 2,
+    gap: spacing.lg,
+    marginTop: spacing.xxs,
   },
   primaryBtn: {
-    paddingHorizontal: 18,
-    paddingVertical: 10,
+    paddingHorizontal: spacing.xxl,
+    paddingVertical: spacing.lg,
     borderRadius: radius.pill,
     backgroundColor: palette.accent,
   },
   primaryBtnText: {
-    color: '#00131F',
-    fontSize: 14,
-    fontWeight: '700',
+    color: palette.onAccent,
+    fontSize: type.body.fontSize,
+    fontWeight: weight.bold,
   },
   secondaryBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingHorizontal: spacing.xxl,
+    paddingVertical: spacing.lg,
     borderRadius: radius.pill,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: palette.fill,
     minWidth: 92,
     alignItems: 'center',
   },
   secondaryBtnText: {
     color: palette.text,
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: type.body.fontSize,
+    fontWeight: weight.semibold,
   },
   btnDisabled: {
     opacity: 0.4,
   },
   probeRow: {
-    marginTop: 4,
-    paddingTop: 10,
+    marginTop: spacing.xs,
+    paddingTop: spacing.lg,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(255,255,255,0.08)',
+    borderTopColor: palette.hairline,
   },
   versionText: {
     color: palette.textFaint,
-    fontSize: 11,
-    marginTop: 2,
+    fontSize: type.caption.fontSize,
+    marginTop: spacing.xxs,
   },
   linkText: {
     color: palette.accent,
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: type.callout.fontSize,
+    fontWeight: weight.semibold,
   },
   testResult: {
-    fontSize: 12.5,
+    fontSize: type.subhead.fontSize,
     lineHeight: 19,
-    fontWeight: '600',
+    fontWeight: weight.semibold,
   },
   stepperRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    marginTop: 4,
+    gap: spacing.xl,
+    marginTop: spacing.xs,
   },
   stepper: {
     width: 38,
@@ -441,15 +441,15 @@ const styles = StyleSheet.create({
     borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: palette.fill,
   },
   stepperDisabled: {
     opacity: 0.35,
   },
   stepperText: {
     color: palette.text,
-    fontSize: 20,
-    fontWeight: '600',
+    fontSize: type.title.fontSize,
+    fontWeight: weight.semibold,
     lineHeight: 24,
   },
   track: {
@@ -462,29 +462,29 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 8,
     borderRadius: 4,
-    backgroundColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: palette.border,
   },
   tickActive: {
     backgroundColor: palette.accent,
   },
   tickDisabled: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: palette.hairline,
   },
   summary: {
-    padding: 14,
+    padding: spacing.xl,
     borderRadius: radius.md,
-    backgroundColor: 'rgba(91,200,255,0.08)',
-    gap: 4,
+    backgroundColor: palette.accentSoft,
+    gap: spacing.xs,
   },
   summaryTitle: {
     color: palette.accent,
-    fontSize: 11,
-    fontWeight: '800',
+    fontSize: type.caption.fontSize,
+    fontWeight: weight.heavy,
     letterSpacing: 0.6,
   },
   summaryLine: {
-    color: 'rgba(255,255,255,0.82)',
-    fontSize: 13,
+    color: 'palette.textSoft',
+    fontSize: type.callout.fontSize,
     lineHeight: 20,
   },
 });

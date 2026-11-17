@@ -11,7 +11,7 @@ import {
   type Camera2CapsFull,
   type Camera2Params,
 } from '@/lib/native-camera2';
-import { palette, radius } from '@/lib/theme';
+import { palette, radius, type, weight } from '@/lib/theme';
 import { cctFromAwbGains, gainsFromKelvin } from '@/lib/white-balance';
 
 type Sample = {
@@ -142,7 +142,7 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#000' },
+  root: { flex: 1, backgroundColor: palette.bg },
   overlay: {
     position: 'absolute',
     top: 0,
@@ -158,21 +158,21 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingTop: 8,
   },
-  back: { color: palette.accent, fontSize: 14, fontWeight: '600' },
-  title: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  back: { color: palette.accent, fontSize: type.body.fontSize, fontWeight: weight.semibold },
+  title: { color: palette.text, fontSize: type.body.fontSize, fontWeight: weight.bold },
   bottom: { gap: 10, paddingBottom: 10 },
   card: {
-    backgroundColor: 'rgba(20,20,24,0.9)',
+    backgroundColor: palette.cardStrong,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: palette.border,
     padding: 12,
     gap: 6,
   },
-  cardTitle: { color: '#fff', fontSize: 13.5, fontWeight: '700' },
+  cardTitle: { color: palette.text, fontSize: type.callout.fontSize, fontWeight: weight.bold },
   row: { flexDirection: 'row', justifyContent: 'space-between', gap: 10 },
-  rowLabel: { color: palette.textFaint, fontSize: 12 },
-  rowValue: { color: '#fff', fontSize: 12, fontWeight: '600', fontVariant: ['tabular-nums'] },
-  hint: { color: palette.textDim, fontSize: 11.5, lineHeight: 17 },
-  sample: { color: '#fff', fontSize: 11.5, fontVariant: ['tabular-nums'] },
+  rowLabel: { color: palette.textFaint, fontSize: type.subhead.fontSize },
+  rowValue: { color: palette.text, fontSize: type.subhead.fontSize, fontWeight: weight.semibold, fontVariant: ['tabular-nums'] },
+  hint: { color: palette.textDim, fontSize: type.caption.fontSize, lineHeight: 17 },
+  sample: { color: palette.text, fontSize: type.caption.fontSize, fontVariant: ['tabular-nums'] },
 });

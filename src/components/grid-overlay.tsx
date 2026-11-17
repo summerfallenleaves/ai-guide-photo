@@ -1,5 +1,7 @@
 import { StyleSheet, View } from 'react-native';
 
+import { palette, spacing } from '@/lib/theme';
+
 /** 三分法构图辅助线 + 中心准星 */
 export function GridOverlay({ visible }: { visible: boolean }) {
   if (!visible) return null;
@@ -28,24 +30,24 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     width: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(255,255,255,0.28)',
+    backgroundColor: palette.fillStrong,
   },
   hLine: {
     position: 'absolute',
     left: 0,
     right: 0,
     height: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(255,255,255,0.28)',
+    backgroundColor: palette.fillStrong,
   },
   centerDot: {
     position: 'absolute',
     top: '50%',
     left: '50%',
-    width: 4,
-    height: 4,
-    marginLeft: -2,
-    marginTop: -2,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.5)',
+    width: spacing.xs,
+    height: spacing.xs,
+    marginLeft: -spacing.xxs,
+    marginTop: -spacing.xxs,
+    borderRadius: spacing.xxs,
+    backgroundColor: palette.fillStrong,
   },
 });

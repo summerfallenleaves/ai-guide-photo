@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text } from 'react-native';
 
-import { palette, radius } from '@/lib/theme';
+import { palette, radius, type } from '@/lib/theme';
 
 /**
  * 方向锁定按钮。
@@ -32,21 +32,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: palette.border,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: palette.scrim,
   },
   locked: {
-    backgroundColor: 'rgba(91,200,255,0.28)',
+    backgroundColor: palette.accentSoft,
     borderColor: palette.accent,
   },
   pressed: {
     opacity: 0.55,
   },
   glyph: {
-    color: palette.text,
-    fontSize: 15,
+    ...type.body,
     lineHeight: 20,
   },
   glyphLocked: {
-    fontSize: 13,
+    fontSize: type.callout.fontSize,
   },
 });

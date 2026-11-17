@@ -10,7 +10,7 @@ import {
   probeCameras,
   type CameraCapability,
 } from '@/lib/camera-probe';
-import { palette, radius } from '@/lib/theme';
+import { palette, radius, type, weight } from '@/lib/theme';
 
 export default function ProbeScreen() {
   const [list, setList] = useState<CameraCapability[] | null>(null);
@@ -142,31 +142,31 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   backButton: { width: 64 },
-  backText: { color: palette.accent, fontSize: 15, fontWeight: '600' },
-  title: { color: palette.text, fontSize: 17, fontWeight: '700' },
+  backText: { color: palette.accent, fontSize: type.body.fontSize, fontWeight: weight.semibold },
+  title: { color: palette.text, fontSize: type.headline.fontSize, fontWeight: weight.bold },
   content: { paddingHorizontal: 16, paddingBottom: 32, gap: 12 },
   card: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: palette.fillSubtle,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: palette.border,
     padding: 14,
     gap: 8,
   },
-  cardTitle: { color: palette.text, fontSize: 15, fontWeight: '700', marginBottom: 2 },
-  verdict: { fontSize: 16, fontWeight: '800' },
-  dim: { color: palette.textDim, fontSize: 12.5, lineHeight: 19 },
-  errorText: { color: palette.danger, fontSize: 13, lineHeight: 20 },
+  cardTitle: { color: palette.text, fontSize: type.body.fontSize, fontWeight: weight.bold, marginBottom: 2 },
+  verdict: { fontSize: type.headline.fontSize, fontWeight: weight.heavy },
+  dim: { color: palette.textDim, fontSize: type.subhead.fontSize, lineHeight: 19 },
+  errorText: { color: palette.danger, fontSize: type.callout.fontSize, lineHeight: 20 },
   btn: {
     alignSelf: 'flex-start',
     marginTop: 4,
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: radius.pill,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: palette.fill,
   },
-  btnText: { color: palette.text, fontSize: 13, fontWeight: '600' },
+  btnText: { color: palette.text, fontSize: type.callout.fontSize, fontWeight: weight.semibold },
   row: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
-  rowLabel: { color: palette.textFaint, fontSize: 12.5 },
-  rowValue: { color: palette.text, fontSize: 12.5, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  rowLabel: { color: palette.textFaint, fontSize: type.subhead.fontSize },
+  rowValue: { color: palette.text, fontSize: type.subhead.fontSize, fontWeight: weight.semibold, fontVariant: ['tabular-nums'] },
 });

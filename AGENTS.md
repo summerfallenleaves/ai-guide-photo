@@ -43,6 +43,26 @@ Expo 每个 SDK 版本都有破坏性改动,记忆里的 API 很可能已经改�
 
 ## 三、界面设计
 
+### 3.0 设计 token(唯一事实来源)
+
+**所有视觉值都在 `src/lib/theme.ts`**,页面里不写字面量。
+
+| token | 内容 |
+| --- | --- |
+| `palette` | 颜色:背景 / 浮层卡片 / 描边 / 填充 / 文字三档 / 强调 / 成功 / 警告 / 危险 |
+| `spacing` | 间距 `xxs 2 · xs 4 · sm 6 · md 8 · lg 10 · xl 12 · xxl 16 · xxxl 24 · huge 32` |
+| `radius` | `sm 10 · md 16 · lg 22 · pill` |
+| `type` | 文字层级 `overline 10 · caption 11 · subhead 12.5 · callout 13 · body 15 · headline 16 · title 19 · metric 22 · display 26` |
+| `weight` | `medium · semibold · bold · heavy` |
+| `tabularNums` | 等宽数字(读数防抖) |
+| `motion` | 动效时长 `fast 150 · base 250 · slow 400` |
+
+规则:
+
+- 颜色 / 字号 / 字重 / 内边距一律用 token;`fontSize: 15` 这种写法不允许
+- 一次性光学微调(文字投影、图标 1px 偏移)可以留在原地,**但要写注释说明为什么**
+- 新增 token 前先确认它会被用到第二次
+
 ### 3.1 视觉基线
 
 - **暗色**:相机全屏铺底,UI 全部是浮在上面的半透明层
