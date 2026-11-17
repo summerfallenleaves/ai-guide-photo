@@ -56,9 +56,21 @@ class Camera2PreviewView(context: Context) : FrameLayout(context) {
   private val orientationListener = object : OrientationEventListener(context) {
     override fun onOrientationChanged(orientation: Int) {
       if (orientation == ORIENTATION_UNKNOWN) return
-      deviceOrientation = (((orientation + 45) / 90) * 90) % 360
+      val bucket = (((orientation + 45) / 90) * 90) % 360
+      if (bucket != deviceOrientation) {
+        deviceOrientation = bucket
+        post { fitPreview() }
+      }
     }
   }
+
+  /**
+   * 当前应用到预览上的补偿角度。
+   *
+   * 依据是**手机实际转了多少**(方向传感器),不是窗口方向 ——
+   * 手机横过来,世界在画面里就歪了同样的角度,所以要反向转回来。
+   */
+  private fun compensationRotation(): Int = (360 - deviceOrientation) % 360
 
   init {
     addView(textureView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT, Gravity.CENTER))
@@ -111,6 +123,8 @@ class Camera2PreviewView(context: Context) : FrameLayout(context) {
     val vh = height
     if (vw <= 0 || vh <= 0 || ps.width <= 0 || ps.height <= 0) return
 
+    // 旋转交给 RN 层处理(原生 setRotation 在这台设备上不起作用),
+    // 这里只负责把画面按原始比例等比铺满,不拉伸。
     textureView.layoutParams = LayoutParams(ps.width, ps.height, Gravity.CENTER)
     textureView.rotation = 0f
     val scale = kotlin.math.max(vw.toFloat() / ps.width, vh.toFloat() / ps.height)
@@ -175,47 +189,6 @@ class Camera2PreviewView(context: Context) : FrameLayout(context) {
 
   fun capabilities(): Map<String, Any> = engine?.capabilities() ?: emptyMap()
 
-  /**
-   * 排查预览方向用的现场数据。
-   * transformMatrix 是关键:它由 SurfaceTexture 的生产者(HAL)设置,
-   * 我们设的 textureView.rotation 覆盖不了它。
-   */
-  fun transformInfo(): Map<String, Any> {
-    val ps = engine?.previewSize
-    val m = FloatArray(16)
-    try {
-      textureView.surfaceTexture?.getTransformMatrix(m)
-    } catch (_: Throwable) {
-    }
-    val displayRot = try {
-      if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-        display?.rotation ?: 0
-      } else {
-        @Suppress("DEPRECATION")
-        (context.getSystemService(android.content.Context.WINDOW_SERVICE) as android.view.WindowManager)
-          .defaultDisplay.rotation
-      }
-    } catch (_: Throwable) {
-      0
-    }
-    val lp = textureView.layoutParams
-    return mapOf(
-      "viewW" to width,
-      "viewH" to height,
-      "bufferW" to (ps?.width ?: 0),
-      "bufferH" to (ps?.height ?: 0),
-      "layoutW" to (lp?.width ?: 0),
-      "layoutH" to (lp?.height ?: 0),
-      "textureRotation" to textureView.rotation,
-      "scale" to textureView.scaleX,
-      "displayRotation" to displayRot,
-      "m0" to m[0],
-      "m1" to m[1],
-      "m4" to m[4],
-      "m5" to m[5],
-      "deviceOrientation" to deviceOrientation,
-    )
-  }
 
   var onEngineReady: ((Int, Int) -> Unit)? = null
   var onEngineError: ((String) -> Unit)? = null

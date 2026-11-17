@@ -1,5 +1,5 @@
 import * as ScreenOrientation from 'expo-screen-orientation';
-import { useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useWindowDimensions } from 'react-native';
 
 export type OrientationMode = 'portrait' | 'landscape';
@@ -7,29 +7,52 @@ export type OrientationMode = 'portrait' | 'landscape';
 /**
  * 横竖屏控制。
  *
- * 策略是 A+B:
- * - A:`app.json` 里 orientation 设为 `default`,没按过按钮时跟随系统自动旋转;
- * - B:按钮强制切换。用 `LANDSCAPE`(而不是 LEFT/RIGHT)让系统按你实际握持方向
- *   决定倒向哪边,避免文字上下颠倒。
+ * **不再强制切换方向**。以前点按钮会调 `lockAsync(LANDSCAPE)`,那会让系统把整个
+ * 屏幕转 90°(连文字一起侧过来),用户会误以为是预览在转。
  *
- * 判断当前方向用窗口宽高比,比读屏幕方向事件的竞态更少。
+ * 现在的行为:
+ * - 默认跟随手机自动旋转(`app.json` 的 orientation 是 default)
+ * - 点按钮 = 锁定在当前方向;再点 = 解除锁定,恢复跟随
  */
 export function useOrientation() {
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
+  const [locked, setLocked] = useState(false);
 
   const toggle = useCallback(async () => {
-    const next: OrientationMode = isLandscape ? 'portrait' : 'landscape';
     try {
-      await ScreenOrientation.lockAsync(
-        next === 'landscape'
-          ? ScreenOrientation.OrientationLock.LANDSCAPE
-          : ScreenOrientation.OrientationLock.PORTRAIT_UP,
-      );
+      if (locked) {
+        await ScreenOrientation.unlockAsync();
+        setLocked(false);
+        return;
+      }
+      // 锁定到"当前实际方向",而不是强制切到另一个方向
+      const current = await ScreenOrientation.getOrientationAsync();
+      const target =
+        current === ScreenOrientation.Orientation.PORTRAIT_UP
+          ? ScreenOrientation.OrientationLock.PORTRAIT_UP
+          : current === ScreenOrientation.Orientation.LANDSCAPE_LEFT
+            ? ScreenOrientation.OrientationLock.LANDSCAPE_LEFT
+            : ScreenOrientation.OrientationLock.LANDSCAPE_RIGHT;
+      await ScreenOrientation.lockAsync(target);
+      setLocked(true);
     } catch (err) {
-      console.warn('[orientation] 切换失败:', err);
+      console.warn('[orientation] 锁定切换失败:', err);
     }
-  }, [isLandscape]);
+  }, [locked]);
 
-  return { isLandscape, toggle };
+  // 锁定时如果系统又把方向改了,以实际状态为准
+  useEffect(() => {
+    let alive = true;
+    void ScreenOrientation.getOrientationLockAsync()
+      .then((lock) => {
+        if (alive) setLocked(lock !== ScreenOrientation.OrientationLock.DEFAULT);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  return { isLandscape, locked, toggle };
 }

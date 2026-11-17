@@ -45,27 +45,8 @@ export type Camera2Params = {
   neutralB?: number;
 };
 
-export type TransformInfo = {
-  viewW: number;
-  viewH: number;
-  bufferW: number;
-  bufferH: number;
-  layoutW: number;
-  layoutH: number;
-  textureRotation: number;
-  scale: number;
-  displayRotation: number;
-  /** SurfaceTexture 变换矩阵的旋转部分 */
-  m0: number;
-  m1: number;
-  m4: number;
-  m5: number;
-  deviceOrientation: number;
-};
-
 type Camera2ModuleType = {
   takePicture(): Promise<string>;
-  getTransformInfo(): Promise<TransformInfo>;
   grabPreview(targetWidth: number, quality: number): Promise<string>;
   setManual(
     iso: number | null,
@@ -107,11 +88,6 @@ export function setManual(params: Partial<{
     params.focusDiopters ?? null,
     params.kelvin ?? null,
   );
-}
-
-export async function getTransformInfo(): Promise<TransformInfo | null> {
-  if (!native) return null;
-  return native.getTransformInfo();
 }
 
 export async function getCapabilities(): Promise<Camera2CapsFull | null> {

@@ -438,10 +438,12 @@ class Camera2Engine(
 
   private fun jpegRotation(): Int {
     val deviceDegrees = deviceOrientationProvider?.invoke() ?: 0
+    // 这台设备的方向传感器返回的是"顺时针转过的角度"的负值(逆时针转 90° 报 270),
+    // 所以后置要用加法。实测:竖拍 90°、横拍 0°,与预览一致。
     return if (facing == CameraCharacteristics.LENS_FACING_FRONT) {
-      (sensorOrientation + deviceDegrees) % 360
-    } else {
       (sensorOrientation - deviceDegrees + 360) % 360
+    } else {
+      (sensorOrientation + deviceDegrees) % 360
     }
   }
 
