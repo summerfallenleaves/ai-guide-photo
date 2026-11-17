@@ -36,28 +36,29 @@ export function SuggestionCard({
           <Pressable onPress={onRefresh} style={styles.retry}>
             <Text style={styles.retryText}>重试</Text>
           </Pressable>
-          <Pressable onPress={onOpenSettings} style={styles.footerBtn} hitSlop={8}>
-            <Text style={styles.footerBtnText}>设置</Text>
+          <Pressable onPress={onOpenSettings} hitSlop={8} style={styles.errorSettingHit}>
+            <Text style={styles.errorSettingText}>设置</Text>
           </Pressable>
         </View>
       </View>
     );
   }
 
+  // 关闭自动分析后这张卡没有存在意义(它只服务于定时抓帧),直接不渲染
+  if (!liveOn && !paused) return null;
+
   if (!suggestion) {
     return (
       <View style={[styles.card, compact && styles.cardCompact]}>
         <Text style={styles.placeholderTitle}>
-          {!liveOn ? '自动分析已关闭' : paused ? '自动分析暂停了' : analyzing ? '正在看画面…' : '把镜头对准想拍的东西'}
+          {paused ? '自动分析暂停了' : analyzing ? '正在看画面…' : '把镜头对准想拍的东西'}
         </Text>
         <Text style={styles.placeholderBody}>
-          {!liveOn
-            ? '取景时不再给建议,按快门后照常点评。想恢复就在设置里打开「自动分析」。'
-            : paused
-              ? '连续几次没连上代理,已经暂停。点「换一条」重试。'
-              : compact
-                ? '每几秒看一次画面。'
-                : '我会定时看一眼取景画面,给你一条最值得改的建议。'}
+          {paused
+            ? '连续几次没拿到建议,已经暂停。点右上角 ↻ 重试。'
+            : compact
+              ? '每几秒看一次画面。'
+              : '我会定时看一眼取景画面,给你一条最值得改的建议。'}
         </Text>
       </View>
     );
@@ -73,18 +74,15 @@ export function SuggestionCard({
           {analyzing ? <Text style={styles.liveTag}>更新中…</Text> : null}
           <ConfidenceDots value={suggestion.confidence} />
           <Text style={styles.source}>{suggestion.source === 'deepseek' ? 'AI' : '本地'}</Text>
+          <Pressable onPress={onRefresh} hitSlop={10} style={styles.refreshHit}>
+            <Text style={styles.refreshGlyph}>↻</Text>
+          </Pressable>
         </View>
       </View>
 
       <Text style={[styles.headline, compact && styles.headlineCompact]}>{suggestion.headline}</Text>
       <Text style={[styles.action, compact && styles.actionCompact]}>{suggestion.action}</Text>
       {!compact && suggestion.reason ? <Text style={styles.reason}>{suggestion.reason}</Text> : null}
-
-      <View style={styles.footer}>
-        <Pressable onPress={onRefresh} style={styles.footerBtn} hitSlop={8}>
-          <Text style={styles.footerBtnText}>换一条 ↻</Text>
-        </Pressable>
-      </View>
     </View>
   );
 }
@@ -184,16 +182,15 @@ const styles = StyleSheet.create({
     fontSize: type.subhead.fontSize,
     lineHeight: 19,
   },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: spacing.sm,
-    paddingTop: spacing.lg,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: palette.hairline,
-  },
-  footerBtn: {
+  errorSettingHit: { paddingVertical: spacing.xxs },
+  errorSettingText: { ...type.caption, color: palette.textDim },
+  refreshHit: {
+    paddingHorizontal: spacing.xxs,
     paddingVertical: spacing.xxs,
+  },
+  refreshGlyph: {
+    ...type.callout,
+    color: palette.accent,
   },
   footerBtnText: {
     color: palette.textDim,

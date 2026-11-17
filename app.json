@@ -2,7 +2,7 @@
   "expo": {
     "name": "AI 拍照引导",
     "slug": "ai-guide-photograph",
-    "version": "3.5.1",
+    "version": "3.5.2",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "aiguide",
@@ -29,7 +29,7 @@
       "permissions": [
         "android.permission.CAMERA"
       ],
-      "versionCode": 30501
+      "versionCode": 30502
     },
     "web": {
       "output": "single",
