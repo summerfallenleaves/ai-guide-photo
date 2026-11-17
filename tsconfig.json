@@ -9,10 +9,22 @@
       "@/assets/*": [
         "./assets/*"
       ]
-    }
+    },
+    "types": [
+      "jest",
+      "node"
+    ]
   },
   "include": [
     "**/*.ts",
     "**/*.tsx"
+  ],
+  "exclude": [
+    "node_modules",
+    "android",
+    ".toolchain",
+    ".agents",
+    ".claude",
+    ".home"
   ]
 }

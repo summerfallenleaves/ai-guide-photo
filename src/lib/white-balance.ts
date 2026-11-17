@@ -99,8 +99,11 @@ export function cctFromAwbGains(
 ): number | null {
   if (!(gR > 0 && gG > 0 && gB > 0)) return null;
   const q: Vec3 = [1 / gR, 1 / gG, 1 / gB];
-  const forward = matrix && matrix.length === 9 ? matrix : SRGB_FROM_XYZ;
-  const [X, Y, Z] = applyMatrix(forward, q);
+  // matrix 是「传感器 RGB → XYZ」;拿不到时说明正向用的是 sRGB 近似,
+  // 那条路径里 XYZ → sRGB 是 SRGB_FROM_XYZ,所以反向要乘它的逆。
+  const sensorToXyz = matrix && matrix.length === 9 ? matrix : invert3x3(SRGB_FROM_XYZ);
+  if (!sensorToXyz) return null;
+  const [X, Y, Z] = applyMatrix(sensorToXyz, q);
   const sum = X + Y + Z;
   if (!Number.isFinite(sum) || sum <= 0) return null;
   const x = X / sum;

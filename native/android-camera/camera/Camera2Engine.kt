@@ -429,23 +429,18 @@ class Camera2Engine(
     }
   }
 
-  /**
-   * JPEG 方向:用**设备物理朝向**补偿,不看窗口方向。
-   * 这样按 UI 旋转按钮不会影响出片方向,只有真的转了手机才会。
-   */
-  /** 设备物理朝向由视图注入,JPEG 方向也用它,保证和预览一致 */
+  /** 设备物理朝向由预览视图注入(方向传感器),JPEG 方向据此计算 */
   var deviceOrientationProvider: (() -> Int)? = null
 
-  private fun jpegRotation(): Int {
-    val deviceDegrees = deviceOrientationProvider?.invoke() ?: 0
-    // 这台设备的方向传感器返回的是"顺时针转过的角度"的负值(逆时针转 90° 报 270),
-    // 所以后置要用加法。实测:竖拍 90°、横拍 0°,与预览一致。
-    return if (facing == CameraCharacteristics.LENS_FACING_FRONT) {
-      (sensorOrientation - deviceDegrees + 360) % 360
-    } else {
-      (sensorOrientation + deviceDegrees) % 360
-    }
-  }
+  /**
+   * JPEG 方向:用**设备物理朝向**补偿,不看窗口方向。
+   * 具体公式见 CameraMath,那里有单元测试保护。
+   */
+  private fun jpegRotation(): Int = CameraMath.jpegRotation(
+    sensorOrientation = sensorOrientation,
+    deviceDegrees = deviceOrientationProvider?.invoke() ?: 0,
+    isFront = facing == CameraCharacteristics.LENS_FACING_FRONT,
+  )
 
   fun detach() {
     handler.post { detachInternal() }

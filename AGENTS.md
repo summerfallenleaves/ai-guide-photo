@@ -322,10 +322,29 @@ native/android-camera/
 npx expo install <pkg>     # 装依赖必须用它,会挑 SDK 兼容版本;不要直接 npm install
 npm start                  # 开发服务器
 npx tsc --noEmit           # 类型检查
-npx eslint src --ext .ts,.tsx   # lint
+npx eslint src __tests__ --ext .ts,.tsx   # lint
+
+npm test                   # JS 单元测试(jest)
+npm run test:android       # Kotlin 单元测试(gradle :app:test)
+npm run test:all           # 两者都跑
 ```
 
-**提交前必须过类型检查和 lint。** `npx expo lint` 在当前环境会误报版本错误,直接用 `npx eslint`。
+**提交前必须过类型检查、lint 和测试。** `npx expo lint` 在当前环境会误报版本错误,直接用 `npx eslint`。
+
+### 测试策略
+
+| 层 | 位置 | 覆盖什么 |
+| --- | --- | --- |
+| JS 单元 | `__tests__/*.test.ts` | 纯逻辑 + **JS↔原生契约** |
+| Kotlin 单元 | `native/android-camera/test/` | 方向公式、尺寸选择等纯计算 |
+| 手工回归 | [docs/REGRESSION.md](./docs/REGRESSION.md) | 相机行为(必须真机) |
+
+**最重要的那组是 `__tests__/native-camera2.contract.test.ts`**:它锁死了 JS 调原生模块的
+方法名、参数顺序、事件名和降级行为。重构相机模块(例如改成 Expo Module)时,
+只要这组测试还绿,JS 调用面就没变。
+
+Kotlin 测试源码放在 `native/android-camera/test/`,`sync-native.sh` 会一起复制到
+`android/app/src/test/`,并自动注入 junit 依赖。
 
 ---
 
