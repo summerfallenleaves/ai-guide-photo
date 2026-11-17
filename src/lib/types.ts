@@ -34,13 +34,20 @@ export type AdjustParams = {
   focusMeters?: number;
 };
 
+/** 点评结论:保持 / 微调 / 重拍 */
+export type CaptureVerdict = 'keep' | 'tweak' | 'reshoot';
+
 export type CaptureResult = {
   mode: 'capture';
   score: number;
   headline: string;
   dim: Dim;
   dimLabel: string;
+  /** 这张照片做得好的地方(1 条,用于平衡点评) */
+  strengths: string[];
   improvements: string[];
+  /** 结论:决定 UI 是否显示"没什么要改的" */
+  verdict: CaptureVerdict;
   /** 建议应用的拍摄参数,没有就不给 */
   params?: AdjustParams | null;
   confidence: number;

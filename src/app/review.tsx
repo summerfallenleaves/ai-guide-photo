@@ -132,24 +132,34 @@ export default function ReviewScreen() {
           <Text style={styles.emptyHint}>看构图、光线、主体和背景,大概要一两秒。照片已经存好了,你可以先看。</Text>
         </View>
       ) : review ? (
-        review.improvements.length > 0 ? (
-          <View style={styles.improvements}>
-            <Text style={styles.sectionTitle}>下次这样拍</Text>
-            {review.improvements.map((item, index) => (
-              <View key={index} style={styles.improvementRow}>
-                <View style={styles.indexBadge}>
-                  <Text style={styles.indexText}>{index + 1}</Text>
+        <>
+          {/* 先肯定:让点评有平衡感,也提醒用户哪里是对的 */}
+          {(review.strengths?.length ?? 0) > 0 ? (
+            <View style={styles.strengthBox}>
+              <Text style={styles.strengthTitle}>做得好的地方</Text>
+              <Text style={styles.strengthBody}>{review.strengths?.[0]}</Text>
+            </View>
+          ) : null}
+
+          {(review.improvements?.length ?? 0) > 0 ? (
+            <View style={styles.improvements}>
+              <Text style={styles.sectionTitle}>下次这样拍</Text>
+              {review.improvements.map((item, index) => (
+                <View key={index} style={styles.improvementRow}>
+                  <View style={styles.indexBadge}>
+                    <Text style={styles.indexText}>{index + 1}</Text>
+                  </View>
+                  <Text style={styles.improvementText}>{item}</Text>
                 </View>
-                <Text style={styles.improvementText}>{item}</Text>
-              </View>
-            ))}
-          </View>
-        ) : (
-          <View style={styles.goodBox}>
-            <Text style={styles.goodTitle}>这张没什么要改的</Text>
-            <Text style={styles.goodBody}>构图、光线都没问题,可以直接用。</Text>
-          </View>
-        )
+              ))}
+            </View>
+          ) : review.verdict === 'keep' ? (
+            <View style={styles.goodBox}>
+              <Text style={styles.goodTitle}>这张没什么要改的</Text>
+              <Text style={styles.goodBody}>构图、光线都没问题,可以直接用。</Text>
+            </View>
+          ) : null}
+        </>
       ) : (
         <Text style={styles.emptyHint}>
           {reviewError
@@ -367,6 +377,19 @@ const styles = StyleSheet.create({
     color: palette.warn,
     fontSize: type.subhead.fontSize,
     fontWeight: weight.semibold,
+  },
+  strengthBox: {
+    gap: spacing.xs,
+  },
+  strengthTitle: {
+    ...type.caption,
+    color: palette.good,
+    fontWeight: weight.bold,
+  },
+  strengthBody: {
+    ...type.callout,
+    color: palette.textSoft,
+    lineHeight: 20,
   },
   improvements: {
     gap: spacing.lg,

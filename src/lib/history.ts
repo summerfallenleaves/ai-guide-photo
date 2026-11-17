@@ -96,11 +96,23 @@ export async function loadHistory(): Promise<void> {
         const parsed = JSON.parse(raw) as HistoryEntry[];
         if (Array.isArray(parsed)) {
           // 上次退出时还没点评完的记录,重启后不会再更新,直接标记为失败
-          entries = parsed.map((e) =>
-            e.status === 'analyzing'
-              ? { ...e, status: 'failed' as const, error: '上次点评没有完成' }
-              : e,
-          );
+          entries = parsed.map((e) => {
+            if (e.status === 'analyzing') {
+              return { ...e, status: 'failed' as const, error: '上次点评没有完成' };
+            }
+            // 兼容旧版本记录:补上后加的字段
+            if (e.result && Array.isArray(e.result.improvements)) {
+              return {
+                ...e,
+                result: {
+                  ...e.result,
+                  strengths: e.result.strengths ?? [],
+                  verdict: e.result.verdict ?? 'tweak',
+                },
+              };
+            }
+            return e;
+          });
           // 超过保留期的记录在启动时清掉
           if (pruneExpired()) {
             void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(entries)).catch(() => {});

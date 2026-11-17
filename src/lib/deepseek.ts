@@ -1,5 +1,5 @@
 import { describeMeta, type PhotoMeta } from './exif';
-import type { AdjustParams, CaptureResult, Dim, LiveSuggestion } from './types';
+import type { AdjustParams, CaptureResult, CaptureVerdict, Dim, LiveSuggestion } from './types';
 
 export type Thinking = 'disabled' | 'low' | 'high';
 export type AnalyzeOutcome = LiveSuggestion | CaptureResult;
@@ -33,9 +33,14 @@ const LIVE_PROMPT = `这是一张手机取景器画面,正在取景、还没按�
 只输出 JSON,不要 markdown 代码块:
 {"dim":"composition|light|pose|background|settings","headline":"不超过10个字","action":"一句话,不超过35个字,必须含具体动作","reason":"不超过25个字","confidence":0到1的小数}`;
 
-const CAPTURE_PROMPT = `这是用户刚按下快门拍下的一张照片。
+const CAPTURE_PROMPT = `这是用户刚按下快门拍下的一张照片。请像一位严格的摄影老师点评,但要诚实。
 
-请像一位严格的摄影老师一样点评。
+**第一步:先判断这张照片属于哪种情况,写进 verdict**
+- "keep":很好,几乎不用改,可以直接用
+- "tweak":整体不错,但有一两处可以更好
+- "reshoot":有明显问题,建议重拍
+
+**第二步:按要求输出**
 
 打分标准(按普通手机用户的水平对齐,不要凭感觉给分):
 - 90~100:构图、光线、主体都到位,可以直接发朋友圈或冲印
@@ -44,24 +49,34 @@ const CAPTURE_PROMPT = `这是用户刚按下快门拍下的一张照片。
 - 40~59:问题较多,建议重拍
 - 0~39:基本不能用(糊了、全黑、全白、拍错主体)
 
-headline:一句话说清这张照片最大的亮点,或者最大的问题。不超过 14 个字。
+verdict 和 score 必须自洽:keep 对应 ≥85,tweak 对应 60~85,reshoot 对应 <60。
 
-improvements 的写法(**不要为了凑数编问题**):
-- 照片确实有值得改的地方才写,写 2~3 条,每条必须是下次拍摄能做的具体动作。
-- 如果这张已经很好(通常 score ≥ 85),可以只写 0~2 条,而且只写"锦上添花"的。
-- **如果几乎没什么可改的,直接给空数组 [],headline 写一句肯定的评价。**
-  给一张好照片硬凑三条问题,比不给评价更糟。
+strengths:先写 1 条这张照片**确实**做得好的地方。必须是具体的,不许写"构图不错"这种空话;
+实在找不到就写最接近的一点。
+
+headline:不超过 14 个字,一句话点出最值得说的事(keep 时就写肯定的话)。
+
+improvements 的条数跟着 verdict 走:
+- keep → 0~1 条(可以给空数组)
+- tweak → 1~2 条
+- reshoot → 2~3 条
+每条必须是下次拍摄能做的**具体动作**,不是形容词。
+**不要为了凑数编问题** —— 给一张好照片硬凑三条,比不给评价更糟。
+
+params:
+- 只有 verdict 是 tweak 或 reshoot,且调整拍摄参数**确实**能改善时才给。
+- keep 就不要给 params。
+- 只写需要改的项,没把握的字段直接不要写。
+- iso 是数字;shutter 写成 "1/250" 或 "0.5" 这样的字符串;wb 是色温数字(如 5500);focusMeters 是对焦距离(米)。
+- 必须落在下面给出的硬件范围内。
+
+一致性要求:同一张照片重复点评,分数应该相同或接近,不要随机波动。
 
 中文,说人话。
 
 只输出 JSON,不要 markdown 代码块:
-{"score":整数,"headline":"不超过14个字","improvements":["不超过30个字","...","..."],"params":{"iso":整数,"shutter":"1/250","wb":5500,"focusMeters":1.2},"confidence":0到1的小数}
-
-关于 params:
-- 只有当调整拍摄参数确实能改善这张照片时才给,照片已经很好就省略整个 params。
-- 只写需要改的项,没把握的字段直接不要写。
-- iso 是数字;shutter 写成 "1/250" 或 "0.5" 这样的字符串;wb 是色温数字(如 5500);focusMeters 是对焦距离(米)。
-- 必须落在下面给出的硬件范围内,不要给范围外的值。`;
+{"verdict":"keep|tweak|reshoot","score":整数,"strengths":["不超过30个字"],"headline":"不超过14个字","improvements":["不超过30个字"],"params":{"iso":整数,"shutter":"1/250","wb":5500,"focusMeters":1.2},"confidence":0到1的小数}
+`;
 
 /** 把相机的硬件范围拼进 prompt,避免模型给出设不进去的参数 */
 function withLimits(base: string, limits?: CameraLimits): string {
@@ -148,7 +163,7 @@ export async function askDeepSeek(opts: AskOptions): Promise<AnalyzeOutcome> {
         ],
       },
     ],
-    temperature: 0.4,
+    temperature: 0.2,
     max_tokens: pickMaxTokens(opts.thinking, isCapture),
     response_format: { type: 'json_object' },
     ...thinkingParams(opts.thinking),
@@ -217,7 +232,7 @@ export async function askDeepSeek(opts: AskOptions): Promise<AnalyzeOutcome> {
     throw new DeepSeekError('模型返回的内容无法解析,请重试', 'parse');
   }
 
-  return normalize(parsed, isCapture);
+  return __normalize(parsed, isCapture);
 }
 
 /** 用一次极小的文本请求验证 Key 是否可用 */
@@ -270,7 +285,8 @@ function pickMaxTokens(thinking: Thinking, isCapture: boolean): number {
   return 3000;
 }
 
-function normalize(p: Record<string, unknown>, isCapture: boolean): AnalyzeOutcome {
+/** 纯函数,导出供测试直接验证解析规则 */
+export function __normalize(p: Record<string, unknown>, isCapture: boolean): AnalyzeOutcome {
   const dimValue = typeof p.dim === 'string' ? p.dim : '';
   const dim: Dim = (Object.keys(DIM_LABELS) as Dim[]).includes(dimValue as Dim)
     ? (dimValue as Dim)
@@ -278,17 +294,29 @@ function normalize(p: Record<string, unknown>, isCapture: boolean): AnalyzeOutco
 
   if (isCapture) {
     const rawScore = Number(p.score);
-    const improvements = Array.isArray(p.improvements)
+    const score = Number.isFinite(rawScore) ? Math.min(100, Math.max(0, Math.round(rawScore))) : 60;
+    const verdict = normalizeVerdict(p.verdict, score);
+    const strengths = Array.isArray(p.strengths)
+      ? p.strengths.filter((x): x is string => typeof x === 'string' && x.trim().length > 0).slice(0, 2).map((x) => clip(x, 40))
+      : [];
+    const allImprovements = Array.isArray(p.improvements)
       ? p.improvements.filter((x): x is string => typeof x === 'string' && x.trim().length > 0).slice(0, 3).map((x) => clip(x, 40))
       : [];
+    // 条数跟着 verdict 走:keep 最多 1 条,防止模型"说好又挑刺"
+    const maxImprovements = verdict === 'keep' ? 1 : verdict === 'tweak' ? 2 : 3;
+    const improvements = allImprovements.slice(0, maxImprovements);
+
     return {
       mode: 'capture',
-      score: Number.isFinite(rawScore) ? Math.min(100, Math.max(0, Math.round(rawScore))) : 60,
-      headline: clip(p.headline, 20) || '还行,可以更好',
+      score,
+      verdict,
+      strengths,
+      headline: clip(p.headline, 20) || (verdict === 'keep' ? '这张可以了' : '还行,可以更好'),
       dim,
       dimLabel: DIM_LABELS[dim],
       improvements,
-      params: normalizeParams(p.params),
+      // keep 就不给参数,避免"很好但也建议改 ISO"这种自相矛盾
+      params: verdict === 'keep' ? null : normalizeParams(p.params),
       confidence: clamp01(p.confidence, 0.6),
       source: 'deepseek',
     };
@@ -304,6 +332,19 @@ function normalize(p: Record<string, unknown>, isCapture: boolean): AnalyzeOutco
     confidence: clamp01(p.confidence, 0.6),
     source: 'deepseek',
   };
+}
+
+/** verdict 兜底:模型漏给或给了非法值时,按分数推断,保证前后自洽 */
+function normalizeVerdict(raw: unknown, score: number): CaptureVerdict {
+  if (raw === 'keep' || raw === 'tweak' || raw === 'reshoot') {
+    // 和分数明显矛盾时以分数为准
+    if (raw === 'keep' && score < 80) return 'tweak';
+    if (raw === 'reshoot' && score >= 75) return 'tweak';
+    return raw;
+  }
+  if (score >= 85) return 'keep';
+  if (score >= 60) return 'tweak';
+  return 'reshoot';
 }
 
 /** 解析并清洗模型给的可执行参数;全空就返回 null */
