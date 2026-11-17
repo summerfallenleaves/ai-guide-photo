@@ -13,6 +13,8 @@ export type LastCapture = {
   savedError?: string;
   /** 相机记录的光学参数,用于在复盘页展示 */
   meta?: PhotoMeta | null;
+  /** 按下快门前 AI 最后给的一条建议(可能没有:断网/关闭自动分析) */
+  lastSuggestion?: { headline: string; action: string } | null;
 };
 
 let last: LastCapture | null = null;

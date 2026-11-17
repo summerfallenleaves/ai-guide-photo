@@ -121,6 +121,23 @@ export default function CameraScreen() {
   const [suggestion, setSuggestion] = useState<LiveSuggestion | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 快门前的建议要带给点评,用 ref 保存以免闭包过期
+  const lastSuggestionRef = useRef<{ headline: string; action: string } | null>(null);
+  useEffect(() => {
+    lastSuggestionRef.current =
+      suggestion && suggestion.mode === 'live'
+        ? { headline: suggestion.headline, action: suggestion.action }
+        : null;
+  }, [suggestion]);
+
+  /**
+   * 当前画面是否可以拍了。
+   * **纯提示**:出错、暂停、没有建议时都是 false,但快门永远可用。
+   */
+  const readyToShoot =
+    liveOn && !paused && !error && suggestion?.mode === 'live' && suggestion.readyToShoot === true;
+
   const [capturing, setCapturing] = useState(false);
 
   /** 原生相机实时回报的参数与静态光学信息 */
@@ -406,6 +423,15 @@ export default function CameraScreen() {
     });
   }, [setProSelection]);
 
+  // 变成"可以拍了"时轻震一次,提示用户现在按快门
+  const wasReadyRef = useRef(false);
+  useEffect(() => {
+    if (readyToShoot && !wasReadyRef.current) {
+      void Haptics.selectionAsync();
+    }
+    wasReadyRef.current = readyToShoot;
+  }, [readyToShoot]);
+
   /** 闪光灯三态循环 */
   const cycleFlash = useCallback(() => {
     setFlashModeState((prev) => {
@@ -471,7 +497,8 @@ export default function CameraScreen() {
       }
 
       // 照片先落地:立刻进复盘页,不让用户为了等点评而干站着
-      setLastCapture({ uri: stableUri, saved, meta: photoMeta });
+      const lastSuggestion = lastSuggestionRef.current;
+      setLastCapture({ uri: stableUri, saved, meta: photoMeta, lastSuggestion });
       setReviewState({ status: 'analyzing' });
       router.push({
         pathname: '/review',
@@ -501,6 +528,7 @@ export default function CameraScreen() {
               thinking: thinkingOf(settings),
               endpoint: settings.apiEndpoint,
               meta: photoMeta,
+              lastLiveSuggestion: lastSuggestion,
               limits: capsRef.current
                 ? {
                     isoMin: capsRef.current.isoMin,
@@ -718,7 +746,11 @@ export default function CameraScreen() {
             </View>
 
             <Pressable
-              style={[styles.shutter, capturing && { opacity: 0.6 }]}
+              style={[
+                styles.shutter,
+                readyToShoot && styles.shutterReady,
+                capturing && { opacity: 0.6 },
+              ]}
               onPress={onShutterPress}
               disabled={capturing || !ready}>
               <View style={styles.shutterInner} />
@@ -883,6 +915,9 @@ const styles = StyleSheet.create({
     borderColor: palette.ring,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  shutterReady: {
+    borderColor: palette.good,
   },
   shutterInner: {
     width: 62,

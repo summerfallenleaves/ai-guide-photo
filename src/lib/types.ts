@@ -21,6 +21,11 @@ export type LiveSuggestion = {
   confidence: number;
   source: SuggestionSource;
   metrics?: Metrics | null;
+  /**
+   * 当前画面是否"已经可以拍了"。
+   * **只是提示**:为 false 不代表不能拍,拿不到建议时也是 false。
+   */
+  readyToShoot: boolean;
 };
 
 /** AI 给出的可执行拍摄参数(全部可选,只给需要改的项) */

@@ -26,12 +26,13 @@ const LIVE_PROMPT = `这是一张手机取景器画面,正在取景、还没按�
 1. 建议必须是身体能立刻做的物理动作(移动手机、改变高度、转向、等待、换角度),不要"注意构图"这类空话。
 2. 不要罗列多条,只给一条最关键的。
 3. **如果画面已经没什么可改的,不要硬找问题**。这时:
-   headline 写「可以拍了」,action 写「构图和光线都没问题,按快门吧」,dim 填 composition,
-   confidence 给 0.9 以上。找茬式的建议比不给建议更糟。
+   readyToShoot 填 true,headline 写「可以拍了」,action 写「构图和光线都没问题,按快门吧」,
+   dim 填 composition,confidence 给 0.9 以上。找茬式的建议比不给建议更糟。
+   除此之外 readyToShoot 一律填 false —— 宁可不说"可以拍",也不要在画面还有明显问题时误导用户。
 4. 用中文,用普通用户听得懂的话,别用摄影黑话。
 
 只输出 JSON,不要 markdown 代码块:
-{"dim":"composition|light|pose|background|settings","headline":"不超过10个字","action":"一句话,不超过35个字,必须含具体动作","reason":"不超过25个字","confidence":0到1的小数}`;
+{"dim":"composition|light|pose|background|settings","headline":"不超过10个字","action":"一句话,不超过35个字,必须含具体动作","reason":"不超过25个字","readyToShoot":true或false,"confidence":0到1的小数}`;
 
 const CAPTURE_PROMPT = `这是用户刚按下快门拍下的一张照片。请像一位严格的摄影老师点评,但要诚实。
 
@@ -99,6 +100,26 @@ function formatShutterNs(ns: number): string {
  * 把光学参数拼进 prompt。
  * 只在真的拿到参数时才追加,并且明确要求"参数正常就别硬提"——否则模型会为了凑内容编问题。
  */
+/**
+ * 把"按下快门之前 AI 说过什么"拼进点评 prompt。
+ *
+ * 目的:让点评和取景时的建议**连起来**。否则两段会各说各话,
+ * 用户会觉得"刚才让我抬高,现在又说我构图没问题"。
+ */
+function withLastSuggestion(
+  base: string,
+  last?: { headline: string; action: string } | null,
+): string {
+  if (!last || !last.action) return base;
+  return `${base}
+
+补充信息:按下这张快门前,你刚给用户的取景建议是「${last.action}」。
+点评时请对照一下:用户照做了吗?照做之后效果如何?
+- 如果照片确实改善了这个方面,在 strengths 里肯定一下。
+- 如果没照做、问题依然存在,直接指出这一点(这是最有用的反馈)。
+- 如果这条建议已经不适用了,忽略它,不要硬扯。`;
+}
+
 function withMeta(base: string, meta?: PhotoMeta | null): string {
   const desc = describeMeta(meta);
   if (!desc) return base;
@@ -135,6 +156,8 @@ export type AskOptions = {
   limits?: CameraLimits;
   /** 拍摄参数,没有就不传 */
   meta?: PhotoMeta | null;
+  /** 快门前的最后一条取景建议 */
+  lastLiveSuggestion?: { headline: string; action: string } | null;
   apiKey: string;
   endpoint?: string;
   model?: string;
@@ -155,7 +178,13 @@ export async function askDeepSeek(opts: AskOptions): Promise<AnalyzeOutcome> {
       {
         role: 'user',
         content: [
-          { type: 'text', text: withLimits(withMeta(isCapture ? CAPTURE_PROMPT : LIVE_PROMPT, opts.meta), isCapture ? opts.limits : undefined) },
+          {
+            type: 'text',
+            text: withLimits(
+              withLastSuggestion(withMeta(isCapture ? CAPTURE_PROMPT : LIVE_PROMPT, opts.meta), isCapture ? opts.lastLiveSuggestion : null),
+              isCapture ? opts.limits : undefined,
+            ),
+          },
           {
             type: 'image_url',
             image_url: { url: `data:image/jpeg;base64,${opts.imageBase64}`, detail: 'high' },
@@ -322,13 +351,16 @@ export function __normalize(p: Record<string, unknown>, isCapture: boolean): Ana
     };
   }
 
+  const headline = clip(p.headline, 14) || '调整一下试试';
   return {
     mode: 'live',
     dim,
     dimLabel: DIM_LABELS[dim],
-    headline: clip(p.headline, 14) || '调整一下试试',
+    headline,
     action: clip(p.action, 40) || '换一个角度再取景',
     reason: clip(p.reason, 30),
+    // 模型没给布尔值时,退回看标题是不是"可以拍了"
+    readyToShoot: p.readyToShoot === true || headline.includes('可以拍了'),
     confidence: clamp01(p.confidence, 0.6),
     source: 'deepseek',
   };

@@ -13,6 +13,8 @@ export type AnalyzeOptions = {
   meta?: PhotoMeta | null;
   /** 相机硬件可调范围,用于约束 AI 给出的参数 */
   limits?: CameraLimits;
+  /** 快门前的最后一条取景建议,让点评能对照"用户有没有照做" */
+  lastLiveSuggestion?: { headline: string; action: string } | null;
 };
 
 /**
@@ -37,6 +39,7 @@ export async function analyze(
     thinking: opts.thinking ?? 'disabled',
     meta: opts.meta,
     limits: opts.limits,
+    lastLiveSuggestion: opts.lastLiveSuggestion,
     apiKey,
     endpoint: opts.endpoint,
     timeoutMs: opts.timeoutMs,
