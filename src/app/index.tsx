@@ -1,5 +1,6 @@
 
 import * as Haptics from 'expo-haptics';
+import * as Speech from 'expo-speech';
 import { router, useFocusEffect } from 'expo-router';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -431,6 +432,28 @@ export default function CameraScreen() {
     }
     wasReadyRef.current = readyToShoot;
   }, [readyToShoot]);
+
+  // 语音播报:默认关闭,开启后每次新建议读一遍(可拍时读"可以拍了")
+  const lastSpokenRef = useRef<string>('');
+  useEffect(() => {
+    if (!settings.voiceGuide || !focused || !appActive) return;
+    if (!suggestion || suggestion.mode !== 'live') return;
+
+    const text = suggestion.readyToShoot ? suggestion.headline : suggestion.action;
+    if (!text || text === lastSpokenRef.current) return;
+    lastSpokenRef.current = text;
+
+    // 先停掉上一句,避免叠在一起
+    void Speech.stop().then(() => {
+      Speech.speak(text, { language: 'zh-CN', rate: 1.0 });
+    });
+  }, [settings.voiceGuide, focused, appActive, suggestion]);
+
+  // 离开页面/退到后台就闭嘴
+  useEffect(() => {
+    if (focused && appActive) return;
+    void Speech.stop();
+  }, [focused, appActive]);
 
   /** 闪光灯三态循环 */
   const cycleFlash = useCallback(() => {

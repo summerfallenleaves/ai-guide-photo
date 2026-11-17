@@ -161,6 +161,14 @@ export default function SettingsScreen() {
         />
 
         <SwitchRow
+          title="语音播报"
+          description="把取景建议读出来,举着手机不用低头看。默认关闭——公共场合出声可能打扰别人。"
+          note={settings.fastMode ? null : null}
+          value={settings.voiceGuide}
+          onValueChange={(v) => updateSettings({ voiceGuide: v })}
+        />
+
+        <SwitchRow
           title="参数建议"
           description="读取相机记录的光学参数(焦距、光圈、ISO、快门),让建议能涉及拍摄参数而不是只看画面。"
           value={settings.paramAdvice}

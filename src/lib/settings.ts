@@ -14,6 +14,11 @@ export type AppSettings = {
   apiEndpoint: string;
   /** 读取相机记录的光学参数,让建议能涉及焦距/ISO/快门 */
   paramAdvice: boolean;
+  /**
+   * 语音播报取景建议。
+   * **默认关闭** —— 户外/公共场合出声可能打扰别人,必须用户主动打开。
+   */
+  voiceGuide: boolean;
 };
 
 export const INTERVAL_MIN = 3;
@@ -25,6 +30,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   intervalSec: 3,
   apiEndpoint: '',
   paramAdvice: true,
+  voiceGuide: false,
 };
 
 const STORAGE_KEY = 'ai-guide-photo:settings:v1';
@@ -70,6 +76,7 @@ function sanitize(input: Partial<AppSettings>): AppSettings {
   return {
     fastMode: typeof input.fastMode === 'boolean' ? input.fastMode : DEFAULT_SETTINGS.fastMode,
     autoAnalyze: typeof input.autoAnalyze === 'boolean' ? input.autoAnalyze : DEFAULT_SETTINGS.autoAnalyze,
+    voiceGuide: typeof input.voiceGuide === 'boolean' ? input.voiceGuide : DEFAULT_SETTINGS.voiceGuide,
     intervalSec: Number.isFinite(interval)
       ? Math.min(INTERVAL_MAX, Math.max(INTERVAL_MIN, Math.round(interval)))
       : DEFAULT_SETTINGS.intervalSec,

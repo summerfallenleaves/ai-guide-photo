@@ -226,6 +226,22 @@ Expo 每个 SDK 版本都有破坏性改动,记忆里的 API 很可能已经改�
 - 不做"必须等到绿色才能拍"这类拦截 —— 那样断网时 App 就退化成一块砖
 - 震动只在 false→true 的边沿触发一次,避免反复闪烁骚扰
 
+### 语音播报(expo-speech)
+
+- **默认关闭**(`settings.voiceGuide = false`)。户外/公共场合出声会打扰别人,必须用户主动开
+- 播报内容:`readyToShoot` 时说 headline(通常是「可以拍了」),否则说 action(具体动作)
+- 只在 `focused && appActive && voiceGuide` 时出声;离开页面或退到后台立即 `Speech.stop()`
+- 用 `lastSpokenRef` 去重:同一句话不重复读
+- 开始播报前先 `Speech.stop()`,避免两句叠在一起
+
+### 历史统计(零 AI 成本)
+
+`src/lib/history-stats.ts` 里的 `computeHistoryStats()` 是**纯函数**:
+平均分、最高分、verdict 分布、最常出问题的维度、最近 7 天每日均分。
+
+这些数据本来就在本地,**不要再为统计去调一次模型**。
+没有照片的那天在趋势里占位为空,避免图表跳格。
+
 ### 4.5 拍摄参数从哪来
 
 自研相机通过 `TotalCaptureResult` **实时回报**当前 ISO / 快门 / 对焦位置(约 400ms 一次),

@@ -12,7 +12,8 @@ import {
   useHistory,
   type HistoryEntry,
 } from '@/lib/history';
-import { palette, radius, spacing, type, weight } from '@/lib/theme';
+import { computeHistoryStats } from '@/lib/history-stats';
+import { palette, radius, spacing, tabularNums, type, weight } from '@/lib/theme';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -51,6 +52,7 @@ function buildSections(entries: HistoryEntry[]): Section[] {
 export default function HistoryScreen() {
   const entries = useHistory();
   const sections = useMemo(() => buildSections(entries), [entries]);
+  const stats = useMemo(() => computeHistoryStats(entries), [entries]);
 
   useEffect(() => {
     void loadHistory();
@@ -100,6 +102,7 @@ export default function HistoryScreen() {
         <SectionList
           sections={sections}
           keyExtractor={(item) => item.id}
+          ListHeaderComponent={<StatsCard stats={stats} />}
           contentContainerStyle={styles.list}
           stickySectionHeadersEnabled={false}
           renderSectionHeader={({ section }) => (
@@ -173,6 +176,31 @@ const styles = StyleSheet.create({
   title: { color: palette.text, fontSize: type.headline.fontSize, fontWeight: weight.bold },
   subtitle: { color: palette.textFaint, fontSize: type.caption.fontSize },
   clear: { color: palette.danger, fontSize: type.callout.fontSize, fontWeight: weight.semibold, width: 48, textAlign: 'right' },
+  statsCard: {
+    marginHorizontal: spacing.xl,
+    marginBottom: spacing.xl,
+    padding: spacing.xxl,
+    borderRadius: radius.lg,
+    backgroundColor: palette.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: palette.border,
+    gap: spacing.md,
+  },
+  statsRow: { flexDirection: 'row', justifyContent: 'space-around' },
+  statCell: { alignItems: 'center', gap: 2 },
+  statValue: { ...type.metric, color: palette.text, ...tabularNums },
+  statLabel: { ...type.caption, color: palette.textFaint },
+  bars: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: spacing.sm,
+    height: 46,
+    marginTop: spacing.sm,
+  },
+  barCol: { flex: 1, alignItems: 'stretch', justifyContent: 'flex-end' },
+  bar: { borderRadius: radius.sm / 2, minHeight: 3 },
+  barsCaption: { ...type.overline, color: palette.textFaint },
+  statsLine: { ...type.callout, color: palette.textSoft },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 36, gap: spacing.md },
   emptyTitle: { color: palette.text, fontSize: type.body.fontSize, fontWeight: weight.bold },
   emptyBody: { color: palette.textDim, fontSize: type.subhead.fontSize, lineHeight: 19, textAlign: 'center' },
@@ -197,3 +225,76 @@ const styles = StyleSheet.create({
   deleteHit: { paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   delete: { color: palette.textFaint, fontSize: type.title.fontSize, fontWeight: weight.semibold },
 });
+
+/**
+ * 这几天的趋势。
+ *
+ * 全部本地计算,不调用 AI —— 数据本来就在手里,
+ * 把"单张点评"变成"最近在往哪个方向进步"。
+ */
+function StatsCard({ stats }: { stats: ReturnType<typeof computeHistoryStats> }) {
+  if (stats.analyzed === 0) return null;
+  const maxAvg = Math.max(100, ...stats.daily.map((d) => d.average ?? 0));
+  const verdictLine = [
+    stats.verdicts.keep > 0 ? `可以直接用 ${stats.verdicts.keep}` : null,
+    stats.verdicts.tweak > 0 ? `微调 ${stats.verdicts.tweak}` : null,
+    stats.verdicts.reshoot > 0 ? `建议重拍 ${stats.verdicts.reshoot}` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  return (
+    <View style={styles.statsCard}>
+      <View style={styles.statsRow}>
+        <View style={styles.statCell}>
+          <Text style={styles.statValue}>{Math.round(stats.average ?? 0)}</Text>
+          <Text style={styles.statLabel}>平均分</Text>
+        </View>
+        <View style={styles.statCell}>
+          <Text style={styles.statValue}>{stats.analyzed}</Text>
+          <Text style={styles.statLabel}>已点评</Text>
+        </View>
+        <View style={styles.statCell}>
+          <Text style={styles.statValue}>{stats.best ?? '—'}</Text>
+          <Text style={styles.statLabel}>最高分</Text>
+        </View>
+      </View>
+
+      {/* 最近 7 天的平均分柱状条 */}
+      <View style={styles.bars}>
+        {stats.daily.map((day) => {
+          const height = day.average === null ? 3 : Math.max(3, (day.average / maxAvg) * 44);
+          return (
+            <View key={day.dayKey} style={styles.barCol}>
+              <View
+                style={[
+                  styles.bar,
+                  {
+                    height,
+                    opacity: day.average === null ? 0.18 : 0.85,
+                    backgroundColor:
+                      day.average === null
+                        ? palette.fill
+                        : day.average >= 80
+                          ? palette.good
+                          : day.average >= 60
+                            ? palette.warn
+                            : palette.danger,
+                  },
+                ]}
+              />
+            </View>
+          );
+        })}
+      </View>
+      <Text style={styles.barsCaption}>最近 7 天平均分</Text>
+
+      {verdictLine ? <Text style={styles.statsLine}>{verdictLine}</Text> : null}
+      {stats.topDim ? (
+        <Text style={styles.statsLine}>
+          最常需要改:{stats.topDim.label} · {stats.topDim.count} 次
+        </Text>
+      ) : null}
+    </View>
+  );
+}

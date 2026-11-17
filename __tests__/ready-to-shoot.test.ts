@@ -1,11 +1,11 @@
 jest.mock('expo-file-system', () => ({}));
 jest.mock('expo-image-manipulator', () => ({}));
 
-function normalize(payload: Record<string, unknown>) {
+function normalize(payload: Record<string, unknown>, isCapture = false) {
   jest.resetModules();
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const mod = require('../src/lib/deepseek') as typeof import('../src/lib/deepseek');
-  return mod.__normalize(payload, false);
+  return mod.__normalize(payload, isCapture);
 }
 
 describe('readyToShoot', () => {
