@@ -298,7 +298,14 @@ native/android-camera/                 仅剩「相机能力探测」这个调�
 - 抓帧频率别贪高,3 秒一次足够,再快明显发热
 - 水平仪用的是加速度计(`src/hooks/use-tilt.ts`),**横竖握要换轴**:
   `|x|≥|y|` 时用 `atan2(y,|x|)`,否则 `atan2(x,|y|)`。写死竖屏公式会在横屏下算错
-- **界面锁定竖屏**(`app.json` 的 `orientation: portrait`,v3.3.0 起)。横屏布局已删除。
+- **界面锁定竖屏**(v3.3.0 起)。三处一起锁,缺一不可:
+  1. `app.json` 的 `orientation: portrait` —— **prebuild 时**生成清单用
+  2. `android/app/src/main/AndroidManifest.xml` 的 `android:screenOrientation="portrait"`
+     —— 已生成工程里的实际生效值(改 `app.json` 不会自动同步,要重新 prebuild 或手改)
+  3. `src/app/_layout.tsx` 启动时 `ScreenOrientation.lockAsync(PORTRAIT_UP)`
+     —— 兜底,防止系统"自动旋转"把界面转走
+
+  横屏布局已删除。
   原因:横屏下相机预览的角度/比例反复出问题,而拍照方向由设备朝向单独决定、不受界面影响,
   所以锁竖屏不影响横拍照片的正确性。**重新引入横屏前先读这一节。**
 

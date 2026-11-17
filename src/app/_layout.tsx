@@ -1,4 +1,5 @@
 import { Stack } from 'expo-router';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -11,6 +12,8 @@ export default function RootLayout() {
   useEffect(() => {
     void loadSettings();
     void loadApiKey();
+    // 界面固定竖屏:清单里已经锁了,这里再锁一道,避免系统的"自动旋转"把界面转走
+    void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
   }, []);
 
   return (
