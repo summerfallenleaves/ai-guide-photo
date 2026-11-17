@@ -223,13 +223,6 @@ export default function SettingsScreen() {
             keyboardType="url"
           />
           <Text style={styles.cardDesc}>留空用官方地址。以后如果把请求转接到自己的服务器,填在这里。</Text>
-
-          <Pressable onPress={() => router.push('/probe')} style={styles.probeRow} hitSlop={8}>
-            <Text style={styles.linkText}>相机能力探测 ›</Text>
-          </Pressable>
-          <Pressable onPress={() => router.push('/wb-test')} hitSlop={8}>
-            <Text style={styles.linkText}>白平衡标定 ›</Text>
-          </Pressable>
           <Pressable onPress={() => router.push('/history')} hitSlop={8}>
             <Text style={styles.linkText}>拍照历史 ›</Text>
           </Pressable>
@@ -408,7 +401,7 @@ const styles = StyleSheet.create({
   btnDisabled: {
     opacity: 0.4,
   },
-  probeRow: {
+  linkRow: {
     marginTop: spacing.xs,
     paddingTop: spacing.lg,
     borderTopWidth: StyleSheet.hairlineWidth,

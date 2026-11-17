@@ -65,13 +65,10 @@ src/app/                  页面(Expo Router,文件即路由)
   review.tsx              拍后复盘页
   settings.tsx            设置
   history.tsx             拍照历史
-  probe.tsx               相机能力探测(调试用)
-  wb-test.tsx             白平衡标定(调试用)
 src/components/           建议卡片 / 三分线 / 水平仪 / 闪光灯按钮 / 专业参数面板
 src/hooks/                相机权限、水平仪、朝向
 src/lib/                  设置、密钥、DeepSeek 客户端、图像处理、历史、设计 token
 modules/camera2/          ★ 自研相机(本地 Expo Module):预览/拍照/参数/方向
-native/android-camera/    相机能力探测的原生模块(调试用)
 __tests__/                JS 单元测试(含 JS↔原生契约)
 docs/REGRESSION.md        真机回归清单
 ```

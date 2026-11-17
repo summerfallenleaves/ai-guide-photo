@@ -284,9 +284,8 @@ modules/camera2/                       本地 Expo Module(已入版本控制)
         │   └── CameraMath.kt          纯计算(方向公式/尺寸选择),有单测
         └── test/.../Camera2MathTest.kt
 
-native/android-camera/                 仅剩「相机能力探测」这个调试模块(传统 RN 模块)
-├── CameraProbeModule.kt
-└── CameraProbePackage.kt
+（调试用的���相机能力探测」「白平衡标定」两个页面及其原生探针模块已移除,
+见 TODO.md——需要时从 git 历史恢复）
 ```
 
 **JS 门面**在 `src/lib/native-camera2.ts`,应用只依赖这一层;它负责优雅降级
@@ -504,7 +503,7 @@ npx tsc --noEmit && npx eslint src --ext .ts,.tsx   # 先过类型和 lint
 1. `ANDROID_USER_HOME` 与 `ANDROID_PREFS_ROOT` **不能同时设置**,只保留前者
 2. Gradle 依赖必须走阿里云镜像(官方源 127KB/s,镜像 1.4MB/s)
 3. 相机代码在 `modules/camera2/`,**不受 prebuild 影响**(v3.0.0 起)。
-   只有 `native/android-camera/` 的探针模块仍需 `.toolchain/sync-native.sh` 同步进 `android/`
+   项目里已没有需要手动同步进 `android/` 的原生代码
 4. **`prebuild --clean` 还会冲掉三处手工修改**,重建后要重新应用:
    - `android/gradle.properties`:`jvmargs` 提到 4G、`reactNativeArchitectures=arm64-v8a`、
      `android.enableMinifyInReleaseBuilds=false`
