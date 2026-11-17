@@ -254,36 +254,23 @@ class Camera2Engine(
    * 预览再挑一个和拍摄同比例、分辨率适中的。
    * 这样取景框里看到的就是拍下来的构图,不会被裁掉或拉伸。
    */
+  /**
+   * 选尺寸:拍摄尺寸取"比例最接近屏幕"的,预览尺寸跟随拍摄比例。
+   * 具体规则在 CameraMath 里,有单元测试覆盖。
+   */
   private fun chooseSizes(map: StreamConfigurationMap, viewWidth: Int, viewHeight: Int): Pair<Size, Size> {
-    val jpegSizes = map.getOutputSizes(ImageFormat.JPEG) ?: emptyArray()
-    val textureSizes = map.getOutputSizes(SurfaceTexture::class.java) ?: emptyArray()
-    if (jpegSizes.isEmpty() || textureSizes.isEmpty()) {
+    val jpegPairs = map.getOutputSizes(ImageFormat.JPEG)?.map { it.width to it.height } ?: emptyList()
+    val texturePairs = map.getOutputSizes(SurfaceTexture::class.java)?.map { it.width to it.height } ?: emptyList()
+    if (jpegPairs.isEmpty() || texturePairs.isEmpty()) {
       return Size(1280, 720) to Size(1280, 720)
     }
 
-    val target = ratioOf(viewWidth.toFloat(), viewHeight.toFloat())
-    val capture = jpegSizes.minByOrNull { kotlin.math.abs(ratioOf(it.width.toFloat(), it.height.toFloat()) - target) }
-      ?: jpegSizes.maxByOrNull { it.width }!!
-    val captureRatio = ratioOf(capture.width.toFloat(), capture.height.toFloat())
+    val capture = CameraMath.closestAspect(viewWidth, viewHeight, jpegPairs)
+      ?: jpegPairs.maxByOrNull { it.first }!!
+    val preview = CameraMath.previewFor(capture.first, capture.second, texturePairs) ?: capture
 
-    // 预览必须和拍摄比例一致,否则"看到的"和"拍到的"会不一样。
-    // 找不到完全相同时,选**比例最接近**的那个,而不是随便挑个大的。
-    val sorted = textureSizes.sortedBy {
-      kotlin.math.abs(ratioOf(it.width.toFloat(), it.height.toFloat()) - captureRatio)
-    }
-    val bestDiff = kotlin.math.abs(ratioOf(sorted[0].width.toFloat(), sorted[0].height.toFloat()) - captureRatio)
-    val candidates = sorted.filter {
-      kotlin.math.abs(ratioOf(it.width.toFloat(), it.height.toFloat()) - captureRatio) <= bestDiff + 0.001f
-    }
-    val preview = candidates.filter { it.width <= 1920 }.maxByOrNull { it.width }
-      ?: candidates.minByOrNull { it.width }!!
-
-    return capture to preview
+    return Size(capture.first, capture.second) to Size(preview.first, preview.second)
   }
-
-  /** 统一成 <1 的比例,竖看横看都可比 */
-  private fun ratioOf(w: Float, h: Float): Float =
-    if (w <= 0f || h <= 0f) 1f else kotlin.math.min(w, h) / kotlin.math.max(w, h)
 
   private fun startSession(size: Size) {
     val device = cameraDevice ?: return
@@ -591,10 +578,6 @@ class Camera2Engine(
     deviceDegrees = deviceOrientationProvider?.invoke() ?: 0,
     isFront = facing == CameraCharacteristics.LENS_FACING_FRONT,
   )
-
-  fun detach() {
-    handler.post { detachInternal() }
-  }
 
   private fun detachInternal() {
     isAttached = false

@@ -53,3 +53,6 @@ assets/apk/
 
 # 本地 Android 构建工具链(约 2GB,不入库)
 .toolchain/
+
+# 本地 Expo Module 的构建产物不可入库
+/modules/*/android/build/
