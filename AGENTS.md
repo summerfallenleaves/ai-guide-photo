@@ -250,7 +250,8 @@ native/android-camera/
 - 抓帧频率别贪高,3 秒一次足够,再快明显发热
 - 水平仪用的是加速度计(`src/hooks/use-tilt.ts`),**横竖握要换轴**:
   `|x|≥|y|` 时用 `atan2(y,|x|)`,否则 `atan2(x,|y|)`。写死竖屏公式会在横屏下算错
-- 旋转用 `ScreenOrientation.lockAsync(LANDSCAPE)`,不写死 `LANDSCAPE_LEFT`,让系统按握持方向决定
+- 横竖屏:默认跟随系统;**↻ 按钮是「锁定/解锁当前方向」**,不再强制转到另一个方向
+  (强制转向会让系统把整个屏幕转 90°,文字和预览一起侧过来,用户会误判成预览 bug)
 
 ---
 
