@@ -81,9 +81,6 @@ export function SuggestionCard({
       {!compact && suggestion.reason ? <Text style={styles.reason}>{suggestion.reason}</Text> : null}
 
       <View style={styles.footer}>
-        <Pressable onPress={onOpenSettings} style={styles.footerBtn} hitSlop={8}>
-          <Text style={styles.footerBtnText}>设置</Text>
-        </Pressable>
         <Pressable onPress={onRefresh} style={styles.footerBtn} hitSlop={8}>
           <Text style={styles.footerBtnText}>换一条 ↻</Text>
         </Pressable>

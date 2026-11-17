@@ -683,6 +683,9 @@ export default function CameraScreen() {
             </Pressable>
             {caps?.hasFlash ? <FlashButton mode={flashMode} onPress={cycleFlash} /> : null}
             <LevelBadge tilt={tilt} />
+            <Pressable style={styles.topChip} onPress={() => router.push('/settings')} hitSlop={8}>
+              <Text style={styles.topChipText}>设置</Text>
+            </Pressable>
           </View>
         </View>
 
