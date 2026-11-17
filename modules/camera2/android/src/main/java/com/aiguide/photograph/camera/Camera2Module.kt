@@ -18,12 +18,15 @@ class Camera2Module : Module() {
   override fun definition() = ModuleDefinition {
     Name("Camera2Camera")
 
-    Events("onParams", "onError", "onReady")
+    Events("onParams", "onError", "onReady", "onVolumeKey")
 
     OnCreate {
       Camera2Bus.onParams = { payload -> sendEvent("onParams", payload) }
       Camera2Bus.onError = { message ->
         sendEvent("onError", mapOf("message" to message))
+      }
+      Camera2Bus.onVolumeKey = {
+        sendEvent("onVolumeKey", emptyMap<String, Any>())
       }
       Camera2Bus.onReady = {
         sendEvent("onReady", emptyMap<String, Any>())
@@ -33,6 +36,7 @@ class Camera2Module : Module() {
     OnDestroy {
       Camera2Bus.onParams = null
       Camera2Bus.onError = null
+      Camera2Bus.onVolumeKey = null
       Camera2Bus.onReady = null
     }
 
@@ -45,7 +49,13 @@ class Camera2Module : Module() {
           if (err != null || path == null) {
             promise.reject("CAPTURE_FAILED", err?.message ?: "拍照失败", err)
           } else {
-            promise.resolve(path)
+            // 带上 JPEG 方向:照片横向存储,JS 裁切要据此换算坐标轴
+            promise.resolve(
+              mapOf(
+                "path" to path,
+                "rotation" to view.currentJpegRotation(),
+              ),
+            )
           }
         }
       }
@@ -64,6 +74,10 @@ class Camera2Module : Module() {
           }
         }
       }
+    }
+
+    Function("setPreviewFill") { ratio: Float ->
+      Camera2Bus.activeView?.fillRatio = ratio
     }
 
     Function("setZoom") { ratio: Float ->
@@ -96,6 +110,10 @@ class Camera2Module : Module() {
     }
 
     View(Camera2View::class) {
+      Prop("previewFill") { view: Camera2View, ratio: Float ->
+        view.fillRatio = ratio
+      }
+
       Prop("facing") { view: Camera2View, facing: String? ->
         view.facingName = if (facing == "front") "front" else "back"
       }

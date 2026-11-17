@@ -30,7 +30,7 @@ jest.mock('expo', () => ({
 function createNativeMock(): NativeMock {
   const listeners: Record<string, ((payload: unknown) => void)[]> = {};
   return {
-    takePicture: jest.fn(async () => '/data/cache/camera2-1.jpg'),
+    takePicture: jest.fn(async () => ({ path: '/data/cache/camera2-1.jpg', rotation: 90 })),
     grabPreview: jest.fn(async () => 'BASE64DATA'),
     setManual: jest.fn(),
     setZoom: jest.fn(),
@@ -82,9 +82,12 @@ describe('原生模块存在时', () => {
     expect(loadModule().mod.isNativeCameraAvailable()).toBe(true);
   });
 
-  it('takePicture 原样返回文件路径', async () => {
+  it('takePicture 返回路径与 JPEG 方向角', async () => {
     const { mod } = loadModule();
-    await expect(mod.takePicture()).resolves.toBe('/data/cache/camera2-1.jpg');
+    await expect(mod.takePicture()).resolves.toEqual({
+      path: '/data/cache/camera2-1.jpg',
+      rotation: 90,
+    });
   });
 
   it('grabPreview 按 (宽度, 质量) 的顺序传参', async () => {

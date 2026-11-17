@@ -3,7 +3,7 @@ import * as Haptics from 'expo-haptics';
 import { router, useFocusEffect } from 'expo-router';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, AppState, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Animated, AppState, Linking, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FlashButton } from '@/components/flash-button';
@@ -26,6 +26,7 @@ import {
   setManual,
   addParamsListener,
   addReadyListener,
+  addVolumeKeyListener,
   Camera2Preview,
   getCapabilities,
   grabPreview,
@@ -34,7 +35,7 @@ import {
   type Camera2Params,
   type FlashMode,
 } from '@/lib/native-camera2';
-import { toAnalysisBase64 } from '@/lib/analysis-image';
+import { cropToAspect, toAnalysisBase64 } from '@/lib/analysis-image';
 import type { PhotoMeta } from '@/lib/exif';
 import type { AdjustParams, LiveSuggestion } from '@/lib/types';
 import { setLastCapture, setReviewState, takePendingAdjust } from '@/lib/capture-store';
@@ -44,6 +45,8 @@ import { saveToAlbum } from '@/lib/media';
 import { palette, radius, spacing, tabularNums, type, weight } from '@/lib/theme';
 
 const MAX_CONSECUTIVE_FAILURES = 3;
+/** 预览填充比例,实测调出来的默认值 */
+const DEFAULT_PREVIEW_FILL = 0.25;
 
 export default function CameraScreen() {
   const permission = useCameraPermission();
@@ -75,8 +78,36 @@ export default function CameraScreen() {
   /** 点按对焦的位置(屏幕坐标) */
   const [focusPoint, setFocusPoint] = useState<{ x: number; y: number } | null>(null);
   const [flashMode, setFlashModeState] = useState<FlashMode>('off');
+  const { width: screenW, height: screenH } = useWindowDimensions();
   /** 相机硬件能力(最大变焦、闪光灯、曝光补偿范围) */
   const [caps, setCaps] = useState<Camera2CapsFull | null>(null);
+
+  /**
+   * 取景区域:相机画面按 contain 显示后,屏幕上被画面占据的那块矩形。
+   * 网格线和点按对焦都要以这块为准,否则会和照片对不上。
+   */
+  const previewAspect = caps?.previewAspect && caps.previewAspect > 0 ? caps.previewAspect : 3 / 4;
+  /** 临时:预览填充比例,0=完整显示留黑边,1=铺满裁切 */
+  // 预览填充比例:0 = 完整显示(黑边),1 = 铺满(裁切)。
+  // 0.25 是真机上手调出来的值 —— 画面足够满,又不会裁掉太多。
+  const [fillRatio] = useState(DEFAULT_PREVIEW_FILL);
+  const previewRect = useMemo(() => {
+    // 可见区域的比例:0 → 缓冲原比例(完整),1 → 屏幕比例(铺满)
+    const screenAspect = screenW / screenH;
+    const visibleAspect = previewAspect + (screenAspect - previewAspect) * fillRatio;
+    let w = screenW;
+    let h = screenW / visibleAspect;
+    if (h > screenH) {
+      h = screenH;
+      w = screenH * visibleAspect;
+    }
+    return { x: (screenW - w) / 2, y: (screenH - h) / 2, width: w, height: h, aspect: visibleAspect };
+  }, [previewAspect, fillRatio, screenW, screenH]);
+  const previewRectRef = useRef(previewRect);
+  useEffect(() => {
+    // 在 effect 里同步,避免渲染期写 ref
+    previewRectRef.current = previewRect;
+  }, [previewRect]);
   /** 定时器:0 = 关闭,3 / 10 秒 */
   const [timerSec, setTimerSec] = useState(0);
   /** 正在倒计时时显示剩余秒数 */
@@ -329,10 +360,10 @@ export default function CameraScreen() {
       Gesture.Tap()
         .runOnJS(true)
         .onEnd((event) => {
-          const { width, height } = previewSizeRef.current;
-          if (!width || !height) return;
-          const nx = Math.min(1, Math.max(0, event.x / width));
-          const ny = Math.min(1, Math.max(0, event.y / height));
+          const rect = previewRectRef.current;
+          if (!rect.width || !rect.height) return;
+          const nx = Math.min(1, Math.max(0, (event.x - rect.x) / rect.width));
+          const ny = Math.min(1, Math.max(0, (event.y - rect.y) / rect.height));
           focusAt(nx, ny);
           setFocusPoint({ x: event.x, y: event.y });
           setTimeout(() => setFocusPoint(null), 1200);
@@ -414,9 +445,14 @@ export default function CameraScreen() {
     ]).start();
 
     try {
-      const rawPath = await takePicture();
-      if (!rawPath) throw new Error('拍照失败');
-      const shotUri = `file://${rawPath}`;
+      const shot = await takePicture();
+      if (!shot?.path) throw new Error('拍照失败');
+      const rawUri = `file://${shot.path}`;
+      // 预览只显示了取景画面的一部分时,照片也要按同样的比例裁切;
+      // shot.rotation 告诉我们对横向存储的照片该换算哪个坐标轴
+      const shotUri = await cropToAspect(rawUri, previewRectRef.current.aspect, shot.rotation).catch(
+        () => rawUri,
+      );
 
       // 先直接写相册(Android 13+ 不需要权限),失败才申请
       const saveResult = await saveToAlbum(shotUri);
@@ -527,6 +563,10 @@ export default function CameraScreen() {
     void handleCapture();
   }, [countdown, timerSec, setCountdown, handleCapture]);
 
+  // 音量键当快门:订阅随 onShutterPress 更新,避免闭包过期
+  useEffect(() => addVolumeKeyListener(() => onShutterPress()), [onShutterPress]);
+
+
 
 
   if (!permission.checked) {
@@ -575,10 +615,18 @@ export default function CameraScreen() {
     <View style={styles.root}>
       {/* 相机铺满整屏,横竖屏都只改叠加层的排版,不重建相机 */}
       {/* 只在页面可见时挂载预览:一离开就释放相机 */}
-      {focused && appActive ? <Camera2Preview style={StyleSheet.absoluteFill} facing={facing} /> : null}
+      {focused && appActive ? (
+        <Camera2Preview style={StyleSheet.absoluteFill} facing={facing} previewFill={fillRatio} />
+      ) : null}
 
-      {/* 三分线必须在预览之后,否则会被原生视图盖住 */}
-      <GridOverlay visible={showGrid && focused && appActive} />
+      {/* 三分线对齐到取景区域(不是整屏),这样和照片的三分线一致 */}
+      {focused && appActive ? (
+        <View
+          pointerEvents="none"
+          style={[styles.previewRect, { left: previewRect.x, top: previewRect.y, width: previewRect.width, height: previewRect.height }]}>
+          <GridOverlay visible={showGrid} />
+        </View>
+      ) : null}
 
       {/* 取景操作层:双指缩放 + 点按对焦 */}
       <GestureDetector gesture={previewGesture}>
@@ -888,6 +936,10 @@ const styles = StyleSheet.create({
   },
   topChipText: { ...type.caption, color: palette.textDim },
   topChipTextOn: { color: palette.accent, fontWeight: weight.bold },
+  previewRect: {
+    position: 'absolute',
+    overflow: 'hidden',
+  },
   leftControls: { alignItems: 'flex-start', gap: spacing.md },
   appliedPill: {
     alignSelf: 'center',

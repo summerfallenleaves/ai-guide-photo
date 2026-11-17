@@ -8,4 +8,6 @@ object Camera2Bus {
   var onParams: ((Map<String, Any>) -> Unit)? = null
   var onError: ((String) -> Unit)? = null
   var onReady: (() -> Unit)? = null
+  /** 音量键被按下(用作快门) */
+  var onVolumeKey: (() -> Unit)? = null
 }

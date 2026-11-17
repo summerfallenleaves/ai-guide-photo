@@ -6,6 +6,7 @@ import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraCharacteristics
 import android.util.Base64
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.OrientationEventListener
 import android.view.TextureView
 import android.widget.FrameLayout
@@ -35,6 +36,16 @@ class Camera2View(context: Context, appContext: AppContext) : ExpoView(context, 
       }
     }
 
+  /** 预览填充比例:0 = 完整显示(留黑边),1 = 铺满(裁切) */
+  var fillRatio: Float = 0f
+    set(value) {
+      val next = value.coerceIn(0f, 1f)
+      if (field != next) {
+        field = next
+        post { fitPreview() }
+      }
+    }
+
   private var deviceOrientation = 0
 
   private val orientationListener = object : OrientationEventListener(context) {
@@ -45,6 +56,10 @@ class Camera2View(context: Context, appContext: AppContext) : ExpoView(context, 
   }
 
   init {
+    // 让它能接收按键:音量键当快门用,握持更稳
+    isFocusable = true
+    isFocusableInTouchMode = true
+
     container.addView(
       textureView,
       FrameLayout.LayoutParams(
@@ -131,7 +146,11 @@ class Camera2View(context: Context, appContext: AppContext) : ExpoView(context, 
 
     textureView.layoutParams = FrameLayout.LayoutParams(ps.width, ps.height, Gravity.CENTER)
     textureView.rotation = 0f
-    val scale = kotlin.math.max(vw.toFloat() / ps.width, vh.toFloat() / ps.height)
+    // 在"完整显示(contain)"和"铺满(cover)"之间插值:
+    // ratio=0 留黑边但能看到全部画面;ratio=1 铺满但有裁切。
+    val containScale = kotlin.math.min(vw.toFloat() / ps.width, vh.toFloat() / ps.height)
+    val coverScale = kotlin.math.max(vw.toFloat() / ps.width, vh.toFloat() / ps.height)
+    val scale = containScale + (coverScale - containScale) * fillRatio
     textureView.scaleX = scale
     textureView.scaleY = scale
     textureView.requestLayout()
@@ -180,6 +199,8 @@ class Camera2View(context: Context, appContext: AppContext) : ExpoView(context, 
     }
   }
 
+  fun currentJpegRotation(): Int = engine?.jpegRotationDegrees() ?: 0
+
   fun setZoom(ratio: Float) = engine?.setZoom(ratio) ?: Unit
 
   fun setFlashMode(mode: String) = engine?.setFlashMode(mode) ?: Unit
@@ -200,9 +221,26 @@ class Camera2View(context: Context, appContext: AppContext) : ExpoView(context, 
     }
   }
 
+  override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+    if (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+      // 只在按下时触发一次,抬起不再重复
+      if (event.repeatCount == 0) Camera2Bus.onVolumeKey?.invoke()
+      return true
+    }
+    return super.onKeyDown(keyCode, event)
+  }
+
+  override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+    if (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+      return true
+    }
+    return super.onKeyUp(keyCode, event)
+  }
+
   override fun onAttachedToWindow() {
     super.onAttachedToWindow()
     Camera2Bus.activeView = this
+    requestFocus()
     if (orientationListener.canDetectOrientation()) orientationListener.enable()
   }
 

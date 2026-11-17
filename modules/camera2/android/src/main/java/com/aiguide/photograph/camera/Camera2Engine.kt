@@ -108,6 +108,7 @@ class Camera2Engine(
     val evStep = c.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_STEP)
     val evStepValue = if (evStep != null) evStep.toFloat() else 0.33333334f
     return mapOf(
+      "previewAspect" to (previewSize?.let { it.width.toFloat() / it.height } ?: 0f),
       "maxZoom" to maxZoom,
       "hasFlash" to hasFlash,
       "evMin" to ((evRange?.lower ?: 0) * evStepValue),
@@ -265,13 +266,17 @@ class Camera2Engine(
       ?: jpegSizes.maxByOrNull { it.width }!!
     val captureRatio = ratioOf(capture.width.toFloat(), capture.height.toFloat())
 
-    val sameRatio = textureSizes.filter {
-      kotlin.math.abs(ratioOf(it.width.toFloat(), it.height.toFloat()) - captureRatio) < 0.01f
+    // 预览必须和拍摄比例一致,否则"看到的"和"拍到的"会不一样。
+    // 找不到完全相同时,选**比例最接近**的那个,而不是随便挑个大的。
+    val sorted = textureSizes.sortedBy {
+      kotlin.math.abs(ratioOf(it.width.toFloat(), it.height.toFloat()) - captureRatio)
     }
-    val preview = sameRatio.filter { it.width <= 1920 }.maxByOrNull { it.width }
-      ?: sameRatio.minByOrNull { it.width }
-      ?: textureSizes.filter { it.width <= 1920 }.maxByOrNull { it.width }
-      ?: textureSizes.first()
+    val bestDiff = kotlin.math.abs(ratioOf(sorted[0].width.toFloat(), sorted[0].height.toFloat()) - captureRatio)
+    val candidates = sorted.filter {
+      kotlin.math.abs(ratioOf(it.width.toFloat(), it.height.toFloat()) - captureRatio) <= bestDiff + 0.001f
+    }
+    val preview = candidates.filter { it.width <= 1920 }.maxByOrNull { it.width }
+      ?: candidates.minByOrNull { it.width }!!
 
     return capture to preview
   }
@@ -578,6 +583,9 @@ class Camera2Engine(
    * JPEG 方向:用**设备物理朝向**补偿,不看窗口方向。
    * 具体公式见 CameraMath,那里有单元测试保护。
    */
+  /** 供 JS 判断照片相对显示方向转了多少(裁切时要换算坐标轴) */
+  fun jpegRotationDegrees(): Int = jpegRotation()
+
   private fun jpegRotation(): Int = CameraMath.jpegRotation(
     sensorOrientation = sensorOrientation,
     deviceDegrees = deviceOrientationProvider?.invoke() ?: 0,

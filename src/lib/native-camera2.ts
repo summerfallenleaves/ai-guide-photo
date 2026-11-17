@@ -29,6 +29,8 @@ export type Camera2CapsFull = Camera2Caps & {
   aperture?: number;
   /** 最大数字变焦倍数 */
   maxZoom?: number;
+  /** 预览缓冲的宽高比(宽/高),用于让取景框和照片对齐 */
+  previewAspect?: number;
   /** 是否有闪光灯 */
   hasFlash?: boolean;
   /** 曝光补偿范围(EV 档) */
@@ -58,7 +60,7 @@ export type Camera2Params = {
 type Subscription = { remove: () => void };
 
 type Camera2NativeModule = {
-  takePicture(): Promise<string>;
+  takePicture(): Promise<{ path: string; rotation: number }>;
   grabPreview(targetWidth: number, quality: number): Promise<string>;
   setManual(
     iso: number | null,
@@ -67,6 +69,7 @@ type Camera2NativeModule = {
     kelvin: number | null,
   ): void;
   setZoom(ratio: number): void;
+  setPreviewFill(ratio: number): void;
   setFlashMode(mode: string): void;
   setExposureCompensation(steps: number): void;
   focusAt(x: number, y: number): void;
@@ -79,6 +82,8 @@ const native = requireOptionalNativeModule<Camera2NativeModule>(MODULE_NAME);
 export type Camera2PreviewProps = {
   style?: unknown;
   facing?: Camera2Facing;
+  /** 预览填充比例:0 = 完整显示留黑边,1 = 铺满裁切 */
+  previewFill?: number;
 };
 
 /** 原生预览视图(需要本地构建的 APK,Expo Go 里不存在) */
@@ -89,8 +94,8 @@ export function isNativeCameraAvailable(): boolean {
   return !!native;
 }
 
-/** 拍一张,返回本地文件路径(不带 file:// 前缀) */
-export async function takePicture(): Promise<string> {
+/** 拍一张,返回文件路径(不带 file:// 前缀)与 JPEG 方向角 */
+export async function takePicture(): Promise<{ path: string; rotation: number }> {
   if (!native) throw new Error('当前环境没有原生相机模块');
   return native.takePicture();
 }
@@ -114,6 +119,11 @@ export function setManual(params: Partial<{
     params.focusDiopters ?? null,
     params.kelvin ?? null,
   );
+}
+
+/** 预览填充比例:0 = 完整显示(留黑边),1 = 铺满(裁切) */
+export function setPreviewFill(ratio: number): void {
+  native?.setPreviewFill(ratio);
 }
 
 /** 变焦倍数;设备不支持时静默忽略 */
@@ -155,6 +165,13 @@ export function addErrorListener(cb: (message: string) => void): () => void {
     const message = (payload as { message?: string } | undefined)?.message;
     cb(message ?? '相机出错了');
   });
+  return () => sub.remove();
+}
+
+/** 音量键按下(当作快门) */
+export function addVolumeKeyListener(cb: () => void): () => void {
+  if (!native) return () => {};
+  const sub = native.addListener('onVolumeKey', () => cb());
   return () => sub.remove();
 }
 
