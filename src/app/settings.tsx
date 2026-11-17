@@ -112,7 +112,7 @@ export default function SettingsScreen() {
                 value={keyInput}
                 onChangeText={setKeyInput}
                 placeholder="sk-..."
-                placeholderTextColor="palette.fillStrong"
+                placeholderTextColor={palette.fillStrong}
                 autoCapitalize="none"
                 autoCorrect={false}
                 secureTextEntry
@@ -217,7 +217,7 @@ export default function SettingsScreen() {
             onChangeText={setEndpointInput}
             onEndEditing={() => updateSettings({ apiEndpoint: endpointInput })}
             placeholder={DEFAULT_ENDPOINT}
-            placeholderTextColor="palette.fillStrong"
+            placeholderTextColor={palette.fillStrong}
             autoCapitalize="none"
             autoCorrect={false}
             keyboardType="url"
@@ -262,8 +262,8 @@ function SwitchRow({
           value={value}
           onValueChange={onValueChange}
           disabled={disabled}
-          trackColor={{ false: 'palette.border', true: palette.accentBorder }}
-          thumbColor={value ? palette.text : 'palette.textSoft'}
+          trackColor={{ false: palette.border, true: palette.accentBorder }}
+          thumbColor={value ? palette.text : palette.textSoft}
         />
       </View>
       <Text style={styles.cardDesc}>{description}</Text>
@@ -369,9 +369,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.lg,
     borderRadius: radius.md,
-    backgroundColor: 'palette.scrimStrong',
+    backgroundColor: palette.scrimStrong,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'palette.border',
+    borderColor: palette.border,
     color: palette.text,
     fontSize: type.body.fontSize,
   },
@@ -483,7 +483,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
   },
   summaryLine: {
-    color: 'palette.textSoft',
+    color: palette.textSoft,
     fontSize: type.callout.fontSize,
     lineHeight: 20,
   },

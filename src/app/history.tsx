@@ -188,7 +188,7 @@ const styles = StyleSheet.create({
   sectionCount: { color: palette.textFaint, fontSize: type.caption.fontSize },
   sep: { height: StyleSheet.hairlineWidth, backgroundColor: palette.hairline, marginLeft: 72 },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.xl, paddingVertical: spacing.lg },
-  thumb: { width: 60, height: 60, borderRadius: radius.sm, backgroundColor: 'palette.fillSubtle' },
+  thumb: { width: 60, height: 60, borderRadius: radius.sm, backgroundColor: palette.fillSubtle },
   rowBody: { flex: 1, gap: spacing.xxs },
   rowTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   score: { fontSize: type.headline.fontSize, fontWeight: weight.heavy, fontVariant: ['tabular-nums'] },

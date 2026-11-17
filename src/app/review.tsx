@@ -283,7 +283,7 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     height: 90,
-    backgroundColor: 'palette.scrimStrong',
+    backgroundColor: palette.scrimStrong,
   },
   sheet: {
     backgroundColor: palette.bgElevated,
@@ -381,7 +381,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.lg,
     alignItems: 'flex-start',
-    backgroundColor: 'palette.fillSubtle',
+    backgroundColor: palette.fillSubtle,
     borderRadius: radius.md,
     padding: spacing.xl,
   },
@@ -400,7 +400,7 @@ const styles = StyleSheet.create({
   },
   improvementText: {
     flex: 1,
-    color: 'palette.textSoft',
+    color: palette.textSoft,
     fontSize: type.body.fontSize,
     lineHeight: 21,
   },

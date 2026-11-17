@@ -164,21 +164,36 @@ class Camera2Engine(
         override fun onDisconnected(device: CameraDevice) {
           device.close()
           cameraDevice = null
-          onError("相机被占用(通常是另一个页面还开着预览)")
+          // 切后台/别的应用抢占都会走到这里:悄悄重开,不要直接吓用户
+          if (!disposed && retry < 6) {
+            handler.postDelayed({
+              if (!disposed) {
+                openCamera(manager, cameraId, surfaceTexture, viewWidth, viewHeight, facing, size, retry + 1)
+              }
+            }, 600L)
+          } else {
+            onError("相机被占用,请退出重进")
+          }
         }
 
         override fun onError(device: CameraDevice, error: Int) {
           device.close()
           cameraDevice = null
-          val busy = error == CameraDevice.StateCallback.ERROR_CAMERA_IN_USE ||
-            error == CameraDevice.StateCallback.ERROR_MAX_CAMERAS_IN_USE
-          if (busy && retry < 4) {
-            // 上一会话可能还没完全释放,稍等再试
+          // 1=被占用 2=相机数量超限 3=被系统禁用(切后台常见) 4=设备错误,
+          // 这几种都值得重试;相机服务不可用(5)就没什么可等的了。
+          val recoverable = error == CameraDevice.StateCallback.ERROR_CAMERA_IN_USE ||
+            error == CameraDevice.StateCallback.ERROR_MAX_CAMERAS_IN_USE ||
+            error == CameraDevice.StateCallback.ERROR_CAMERA_DISABLED ||
+            error == CameraDevice.StateCallback.ERROR_CAMERA_DEVICE
+          // 被系统禁用通常要等回到前台,给更多次数和更长的间隔
+          val maxRetry = if (error == CameraDevice.StateCallback.ERROR_CAMERA_DISABLED) 8 else 4
+          if (recoverable && retry < maxRetry) {
+            val delay = if (error == CameraDevice.StateCallback.ERROR_CAMERA_DISABLED) 700L else 400L
             handler.postDelayed({
               if (!disposed) {
                 openCamera(manager, cameraId, surfaceTexture, viewWidth, viewHeight, facing, size, retry + 1)
               }
-            }, 400L)
+            }, delay)
           } else {
             onError("打开相机失败(code=$error)")
           }

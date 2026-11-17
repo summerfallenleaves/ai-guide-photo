@@ -2,16 +2,7 @@
 import * as Haptics from 'expo-haptics';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Animated,
-  Linking,
-  Pressable,
-  StyleSheet,
-  Text,
-  useWindowDimensions,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Animated, AppState, Linking, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { GridOverlay } from '@/components/grid-overlay';
@@ -57,6 +48,20 @@ export default function CameraScreen() {
   const [facing, setFacing] = useState<'back' | 'front'>('back');
   const [ready, setReady] = useState(false);
   const [focused, setFocused] = useState(true);
+  /**
+   * App 是否在前台。退到后台时系统会禁掉相机(ERROR_CAMERA_DISABLED=3),
+   * 所以必须主动卸载预览、回前台再重新打开,否则会一直失败。
+   */
+  const [appActive, setAppActive] = useState(true);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      const active = state === 'active';
+      setAppActive(active);
+      if (!active) setReady(false);
+    });
+    return () => sub.remove();
+  }, []);
   /** API Key 存在设备加密存储里,保存后这里会自动更新 */
   const apiKey = useApiKey();
   const keyReady = !!apiKey;
@@ -88,7 +93,7 @@ export default function CameraScreen() {
   const reviewSeq = useRef(0);
   const flash = useMemo(() => new Animated.Value(0), []);
 
-  const tilt = useTilt(focused && ready);
+  const tilt = useTilt(focused && appActive && ready);
   const { isLandscape, locked, toggle: toggleOrientation } = useOrientation();
   const { width: screenWidth } = useWindowDimensions();
   // 横屏右侧浮动列的宽度
@@ -249,14 +254,14 @@ export default function CameraScreen() {
   }, [runLiveAnalysis]);
 
   useEffect(() => {
-    if (!liveOn || paused || !focused || !ready || !keyReady || !permission.granted) return;
+    if (!liveOn || paused || !focused || !appActive || !ready || !keyReady || !permission.granted) return;
     const warmup = setTimeout(() => void runLiveAnalysis(), 700);
     const timer = setInterval(() => void runLiveAnalysis(), settings.intervalSec * 1000);
     return () => {
       clearTimeout(warmup);
       clearInterval(timer);
     };
-  }, [liveOn, paused, focused, ready, keyReady, permission.granted, runLiveAnalysis, settings.intervalSec]);
+  }, [liveOn, paused, focused, appActive, ready, keyReady, permission.granted, runLiveAnalysis, settings.intervalSec]);
 
   const handleCapture = useCallback(async () => {
     if (!ready || captureBusyRef.current) return;
@@ -402,10 +407,10 @@ export default function CameraScreen() {
     <View style={styles.root}>
       {/* 相机铺满整屏,横竖屏都只改叠加层的排版,不重建相机 */}
       {/* 只在页面可见时挂载预览:一离开就释放相机 */}
-      {focused ? <Camera2Preview style={StyleSheet.absoluteFill} facing={facing} /> : null}
+      {focused && appActive ? <Camera2Preview style={StyleSheet.absoluteFill} facing={facing} /> : null}
 
       {/* 三分线必须在预览之后,否则会被原生视图盖住 */}
-      <GridOverlay visible={showGrid && focused} />
+      <GridOverlay visible={showGrid && focused && appActive} />
 
       {isLandscape ? (
         /* 横屏:右侧浮动一列,背景透明,元素各自带半透明底,和竖屏卡片是同一套视觉语言 */
