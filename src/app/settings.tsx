@@ -162,7 +162,7 @@ export default function SettingsScreen() {
 
         <SwitchRow
           title="语音播报"
-          description="把取景建议读出来,举着手机不用低头看。默认关闭——公共场合出声可能打扰别人。"
+          description="把取景建议读出来,举着手机不用低头看。默认关闭——公共场合出声可能打扰别人。开启后建议会等语音念完再刷新,不会说到一半被顶掉。"
           note={settings.fastMode ? null : null}
           value={settings.voiceGuide}
           onValueChange={(v) => updateSettings({ voiceGuide: v })}

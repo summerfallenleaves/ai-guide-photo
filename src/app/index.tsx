@@ -304,9 +304,29 @@ export default function CameraScreen() {
     throw lastError instanceof Error ? lastError : new Error('抓帧失败');
   }, []);
 
+  /**
+   * 正在语音播报。
+   * 播报期间**冻结取景建议**:不发新请求、不换文字。
+   * 否则 3 秒一轮的建议会在语音说到一半时把内容顶掉,
+   * 用户听到的和看到的还不一样。
+   */
+  const speakingRef = useRef(false);
+  const speakingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const stopSpeaking = useCallback(() => {
+    speakingRef.current = false;
+    if (speakingTimerRef.current) {
+      clearTimeout(speakingTimerRef.current);
+      speakingTimerRef.current = null;
+    }
+    void Speech.stop();
+  }, []);
+
   const runLiveAnalysis = useCallback(async () => {
     // 正在拍照时不抓帧,避免打扰
     if (!ready || analyzeBusyRef.current || captureBusyRef.current) return;
+    // 正在念上一条:等它念完,不要中途换内容
+    if (speakingRef.current) return;
 
     analyzeBusyRef.current = true;
     setAnalyzing(true);
@@ -443,17 +463,43 @@ export default function CameraScreen() {
     if (!text || text === lastSpokenRef.current) return;
     lastSpokenRef.current = text;
 
-    // 先停掉上一句,避免叠在一起
+    speakingRef.current = true;
+
+    // 兜底:某些 TTS 引擎不会回调 onDone,标记会一直卡住导致再也不分析
+    const estimated = Math.min(15000, text.length * 220 + 2500);
+    if (speakingTimerRef.current) clearTimeout(speakingTimerRef.current);
+    speakingTimerRef.current = setTimeout(() => {
+      speakingRef.current = false;
+      speakingTimerRef.current = null;
+      if (focused && appActive) void runLiveAnalysis();
+    }, estimated);
+
+    const finish = () => {
+      speakingRef.current = false;
+      if (speakingTimerRef.current) {
+        clearTimeout(speakingTimerRef.current);
+        speakingTimerRef.current = null;
+      }
+      // 说完立刻补一次分析,不用干等到下一个间隔
+      if (focused && appActive) void runLiveAnalysis();
+    };
+
     void Speech.stop().then(() => {
-      Speech.speak(text, { language: 'zh-CN', rate: 1.0 });
+      Speech.speak(text, {
+        language: 'zh-CN',
+        rate: 1.0,
+        onDone: finish,
+        onStopped: finish,
+        onError: finish,
+      });
     });
-  }, [settings.voiceGuide, focused, appActive, suggestion]);
+  }, [settings.voiceGuide, focused, appActive, suggestion, runLiveAnalysis]);
 
   // 离开页面/退到后台就闭嘴
   useEffect(() => {
     if (focused && appActive) return;
-    void Speech.stop();
-  }, [focused, appActive]);
+    stopSpeaking();
+  }, [focused, appActive, stopSpeaking]);
 
   /** 闪光灯三态循环 */
   const cycleFlash = useCallback(() => {
@@ -466,10 +512,13 @@ export default function CameraScreen() {
 
   // 手动重试:清掉暂停状态并立刻跑一次
   const retryNow = useCallback(() => {
+    // 用户主动换一条:打断当前播报
+    stopSpeaking();
+    lastSpokenRef.current = '';
     setPaused(false);
     failuresRef.current = 0;
     void runLiveAnalysis();
-  }, [runLiveAnalysis, setPaused]);
+  }, [runLiveAnalysis, setPaused, stopSpeaking]);
 
   useEffect(() => {
     if (!liveOn || paused || !focused || !appActive || !ready || !keyReady || !permission.granted) return;
