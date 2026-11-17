@@ -7,11 +7,24 @@
 
 type CameraModule = typeof import('../src/lib/native-camera2');
 
-const EVENT_PARAMS = 'Camera2Params';
-const EVENT_ERROR = 'Camera2Error';
-const EVENT_READY = 'Camera2Ready';
+type NativeMock = {
+  takePicture: jest.Mock;
+  grabPreview: jest.Mock;
+  setManual: jest.Mock;
+  getCapabilities: jest.Mock;
+  addListener: jest.Mock;
+  __emit: (event: string, payload: unknown) => void;
+};
 
-function createNativeMock() {
+let mockNative: NativeMock | null = null;
+
+jest.mock('expo', () => ({
+  requireOptionalNativeModule: () => mockNative,
+  requireNativeView: () => 'MockCamera2Preview',
+}));
+
+function createNativeMock(): NativeMock {
+  const listeners: Record<string, ((payload: unknown) => void)[]> = {};
   return {
     takePicture: jest.fn(async () => '/data/cache/camera2-1.jpg'),
     grabPreview: jest.fn(async () => 'BASE64DATA'),
@@ -26,134 +39,119 @@ function createNativeMock() {
       aperture: 1.6,
       colorTransform: [1, 0, 0, 0, 1, 0, 0, 0, 1],
     })),
+    addListener: jest.fn((event: string, cb: (payload: unknown) => void) => {
+      (listeners[event] ||= []).push(cb);
+      return {
+        remove: () => {
+          listeners[event] = (listeners[event] || []).filter((fn) => fn !== cb);
+        },
+      };
+    }),
+    __emit: (event: string, payload: unknown) => {
+      (listeners[event] || []).forEach((fn) => fn(payload));
+    },
   };
 }
 
-/** 该模块在 import 时就读取 NativeModules,所以必须每次重新加载 */
-function loadModule(setup?: (native: ReturnType<typeof createNativeMock> | undefined) => void): CameraModule {
-  let mod: CameraModule | undefined;
-  jest.isolateModules(() => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { NativeModules } = require('react-native');
-    const native = createNativeMock();
-    NativeModules.Camera2Module = native;
-    setup?.(native);
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    mod = require('../src/lib/native-camera2') as CameraModule;
-  });
-  return mod!;
+function loadModule(): { mod: CameraModule; native: NativeMock } {
+  const native = createNativeMock();
+  mockNative = native;
+  jest.resetModules();
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const mod = require('../src/lib/native-camera2') as CameraModule;
+  return { mod, native };
 }
 
 function loadWithoutNative(): CameraModule {
-  let mod: CameraModule | undefined;
-  jest.isolateModules(() => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { NativeModules } = require('react-native');
-    delete NativeModules.Camera2Module;
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    mod = require('../src/lib/native-camera2') as CameraModule;
-  });
-  return mod!;
+  mockNative = null;
+  jest.resetModules();
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return require('../src/lib/native-camera2') as CameraModule;
 }
 
 describe('原生模块存在时', () => {
   it('能检测到原生相机可用', () => {
-    const mod = loadModule();
-    expect(mod.isNativeCameraAvailable()).toBe(true);
+    expect(loadModule().mod.isNativeCameraAvailable()).toBe(true);
   });
 
   it('takePicture 原样返回文件路径', async () => {
-    const mod = loadModule();
+    const { mod } = loadModule();
     await expect(mod.takePicture()).resolves.toBe('/data/cache/camera2-1.jpg');
   });
 
   it('grabPreview 按 (宽度, 质量) 的顺序传参', async () => {
-    let captured: ReturnType<typeof createNativeMock> | undefined;
-    const mod = loadModule((n) => {
-      captured = n;
-    });
+    const { mod, native } = loadModule();
     await expect(mod.grabPreview(1024, 60)).resolves.toBe('BASE64DATA');
-    expect(captured!.grabPreview).toHaveBeenCalledWith(1024, 60);
+    expect(native.grabPreview).toHaveBeenCalledWith(1024, 60);
   });
 
   it('grabPreview 有默认参数(宽 1024 / 质量 60)', async () => {
-    let captured: ReturnType<typeof createNativeMock> | undefined;
-    const mod = loadModule((n) => {
-      captured = n;
-    });
+    const { mod, native } = loadModule();
     await mod.grabPreview();
-    expect(captured!.grabPreview).toHaveBeenCalledWith(1024, 60);
+    expect(native.grabPreview).toHaveBeenCalledWith(1024, 60);
   });
 
   it('setManual 把对象展开成 4 个位置参数', () => {
-    let captured: ReturnType<typeof createNativeMock> | undefined;
-    const mod = loadModule((n) => {
-      captured = n;
-    });
+    const { mod, native } = loadModule();
     mod.setManual({ iso: 200, exposureNs: 4_000_000, focusDiopters: 1, kelvin: 5000 });
-    expect(captured!.setManual).toHaveBeenCalledWith(200, 4_000_000, 1, 5000);
+    expect(native.setManual).toHaveBeenCalledWith(200, 4_000_000, 1, 5000);
   });
 
   it('setManual 只传部分轴时,其余必须是 null(表示回自动)', () => {
-    let captured: ReturnType<typeof createNativeMock> | undefined;
-    const mod = loadModule((n) => {
-      captured = n;
-    });
+    const { mod, native } = loadModule();
     mod.setManual({ iso: 400 });
-    expect(captured!.setManual).toHaveBeenCalledWith(400, null, null, null);
+    expect(native.setManual).toHaveBeenCalledWith(400, null, null, null);
   });
 
   it('setManual 空对象 = 全部回自动', () => {
-    let captured: ReturnType<typeof createNativeMock> | undefined;
-    const mod = loadModule((n) => {
-      captured = n;
-    });
+    const { mod, native } = loadModule();
     mod.setManual({});
-    expect(captured!.setManual).toHaveBeenCalledWith(null, null, null, null);
+    expect(native.setManual).toHaveBeenCalledWith(null, null, null, null);
   });
 
   it('getCapabilities 返回原生给的对象', async () => {
-    const mod = loadModule();
-    const caps = await mod.getCapabilities();
-    expect(caps).toMatchObject({ isoMin: 100, isoMax: 800, aperture: 1.6 });
+    const { mod } = loadModule();
+    await expect(mod.getCapabilities()).resolves.toMatchObject({ isoMin: 100, isoMax: 800, aperture: 1.6 });
   });
 });
 
 describe('事件订阅', () => {
-  it('addParamsListener 订阅 Camera2Params 并能收到载荷', () => {
-    const mod = loadModule();
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { DeviceEventEmitter } = require('react-native');
+  it('addParamsListener 订阅 onParams 并能收到载荷', () => {
+    const { mod, native } = loadModule();
     const received: unknown[] = [];
     const off = mod.addParamsListener((p) => received.push(p));
 
     const payload = { iso: 320, exposureNs: 1e6, focusDiopters: 0, kelvin: 0, manual: false };
-    DeviceEventEmitter.emit(EVENT_PARAMS, payload);
+    native.__emit('onParams', payload);
 
     expect(received).toEqual([payload]);
     off();
-    DeviceEventEmitter.emit(EVENT_PARAMS, payload);
+    native.__emit('onParams', payload);
     expect(received).toHaveLength(1);
   });
 
-  it('addErrorListener 订阅 Camera2Error', () => {
-    const mod = loadModule();
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { DeviceEventEmitter } = require('react-native');
+  it('addErrorListener 把 {message} 解包成字符串', () => {
+    const { mod, native } = loadModule();
     const received: string[] = [];
     const off = mod.addErrorListener((m) => received.push(m));
-    DeviceEventEmitter.emit(EVENT_ERROR, '相机被占用');
+    native.__emit('onError', { message: '相机被占用' });
     expect(received).toEqual(['相机被占用']);
     off();
   });
 
-  it('addReadyListener 订阅 Camera2Ready', () => {
-    const mod = loadModule();
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { DeviceEventEmitter } = require('react-native');
+  it('addErrorListener 在载荷缺失时给出兜底文案', () => {
+    const { mod, native } = loadModule();
+    const received: string[] = [];
+    mod.addErrorListener((m) => received.push(m));
+    native.__emit('onError', undefined);
+    expect(received).toEqual(['相机出错了']);
+  });
+
+  it('addReadyListener 订阅 onReady', () => {
+    const { mod, native } = loadModule();
     const hits: number[] = [];
     const off = mod.addReadyListener(() => hits.push(1));
-    DeviceEventEmitter.emit(EVENT_READY, true);
+    native.__emit('onReady', {});
     expect(hits).toHaveLength(1);
     off();
   });
@@ -179,6 +177,13 @@ describe('原生模块不存在时(如 Expo Go)', () => {
   it('getCapabilities 返回 null', async () => {
     await expect(loadWithoutNative().getCapabilities()).resolves.toBeNull();
   });
+
+  it('订阅函数返回空的取消函数,不抛错', () => {
+    const mod = loadWithoutNative();
+    expect(() => mod.addParamsListener(() => {})()).not.toThrow();
+    expect(() => mod.addErrorListener(() => {})()).not.toThrow();
+    expect(() => mod.addReadyListener(() => {})()).not.toThrow();
+  });
 });
 
 describe('快门字符串互转', () => {
@@ -192,18 +197,17 @@ describe('快门字符串互转', () => {
   ];
 
   it.each(cases)('parseShutterToNs(%s) ≈ %d ns', (text, expected) => {
-    const mod = loadModule();
-    expect(mod.parseShutterToNs(text)).toBeCloseTo(expected, 3);
+    expect(loadModule().mod.parseShutterToNs(text)).toBeCloseTo(expected, 3);
   });
 
   it('无法解析时返回 undefined', () => {
-    const mod = loadModule();
+    const { mod } = loadModule();
     expect(mod.parseShutterToNs('abc')).toBeUndefined();
     expect(mod.parseShutterToNs('0')).toBeUndefined();
   });
 
   it('formatShutterNs 输出人可读的写法', () => {
-    const mod = loadModule();
+    const { mod } = loadModule();
     expect(mod.formatShutterNs(4_000_000)).toBe('1/250');
     expect(mod.formatShutterNs(1_000_000)).toBe('1/1000');
     expect(mod.formatShutterNs(1_500_000_000)).toBe('1.5s');
@@ -211,7 +215,7 @@ describe('快门字符串互转', () => {
   });
 
   it('parse 和 format 能互相还原', () => {
-    const mod = loadModule();
+    const { mod } = loadModule();
     expect(mod.formatShutterNs(mod.parseShutterToNs('1/250')!)).toBe('1/250');
   });
 });

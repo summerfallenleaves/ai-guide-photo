@@ -9,40 +9,25 @@ import android.view.Gravity
 import android.view.OrientationEventListener
 import android.view.TextureView
 import android.widget.FrameLayout
+import expo.modules.kotlin.AppContext
+import expo.modules.kotlin.views.ExpoView
 import java.io.ByteArrayOutputStream
 
-/** 相机实时参数的出口:引擎 → 视图 → 模块 → JS */
-object Camera2Bus {
-  var onParams: ((
-    iso: Int,
-    exposureNs: Long,
-    focusDiopters: Float,
-    kelvin: Int,
-    manual: Boolean,
-    awbR: Float,
-    awbG: Float,
-    awbB: Float,
-    neutralR: Float,
-    neutralG: Float,
-    neutralB: Float,
-  ) -> Unit)? = null
-  var onError: ((String) -> Unit)? = null
-  var onReady: (() -> Unit)? = null
-}
-
 /**
- * 原生相机预览视图。
+ * 相机预览视图。
  *
- * **预览不做任何旋转补偿** —— 画面永远按传感器原始朝向显示。
- * 界面上的旋转按钮只影响 UI 元素(快门/网格/翻转/悬浮卡片),不碰预览。
+ * **预览不做任何旋转补偿** —— 这台设备的相机管线会自己按屏幕方向摆正画面。
+ * 界面的横竖屏切换只影响 UI,不碰预览。
  * 方向传感器只用来给**拍照**算 JPEG 方向,保证存下来的照片是正的。
  */
-class Camera2PreviewView(context: Context) : FrameLayout(context) {
+class Camera2View(context: Context, appContext: AppContext) : ExpoView(context, appContext) {
 
+  private val container = FrameLayout(context)
   private val textureView = TextureView(context)
   private var engine: Camera2Engine? = null
 
-  var facing: Int = CameraCharacteristics.LENS_FACING_BACK
+  /** "back" 或 "front",由 JS 侧 prop 控制 */
+  var facingName: String = "back"
     set(value) {
       if (field != value) {
         field = value
@@ -50,30 +35,29 @@ class Camera2PreviewView(context: Context) : FrameLayout(context) {
       }
     }
 
-  /** 设备物理朝向,只用于拍照方向 */
   private var deviceOrientation = 0
 
   private val orientationListener = object : OrientationEventListener(context) {
     override fun onOrientationChanged(orientation: Int) {
       if (orientation == ORIENTATION_UNKNOWN) return
-      val bucket = (((orientation + 45) / 90) * 90) % 360
-      if (bucket != deviceOrientation) {
-        deviceOrientation = bucket
-        post { fitPreview() }
-      }
+      deviceOrientation = (((orientation + 45) / 90) * 90) % 360
     }
   }
 
-  /**
-   * 当前应用到预览上的补偿角度。
-   *
-   * 依据是**手机实际转了多少**(方向传感器),不是窗口方向 ——
-   * 手机横过来,世界在画面里就歪了同样的角度,所以要反向转回来。
-   */
-  private fun compensationRotation(): Int = (360 - deviceOrientation) % 360
-
   init {
-    addView(textureView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT, Gravity.CENTER))
+    container.addView(
+      textureView,
+      FrameLayout.LayoutParams(
+        FrameLayout.LayoutParams.MATCH_PARENT,
+        FrameLayout.LayoutParams.MATCH_PARENT,
+        Gravity.CENTER,
+      ),
+    )
+    addView(
+      container,
+      LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT),
+    )
+
     textureView.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
       override fun onSurfaceTextureAvailable(st: SurfaceTexture, w: Int, h: Int) = start(w, h)
       override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, w: Int, h: Int) = start(w, h)
@@ -86,36 +70,58 @@ class Camera2PreviewView(context: Context) : FrameLayout(context) {
     }
   }
 
+  override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+    super.onLayout(changed, left, top, right, bottom)
+    fitPreview()
+  }
+
   private fun start(width: Int, height: Int) {
     val st = textureView.surfaceTexture ?: return
     val e = engine ?: Camera2Engine(
       context = context,
       onError = { msg ->
-        post {
-          onEngineError?.invoke(msg)
-          Camera2Bus.onError?.invoke(msg)
-        }
+        post { Camera2Bus.onError?.invoke(msg) }
       },
-      onReady = { w, h ->
+      onReady = { _, _ ->
         post {
           fitPreview()
-          onEngineReady?.invoke(w, h)
           Camera2Bus.onReady?.invoke()
         }
       },
       onParams = { iso, exp, focus, kelvin, manual, ar, ag, ab, nr, ng, nb ->
-        post { Camera2Bus.onParams?.invoke(iso, exp, focus, kelvin, manual, ar, ag, ab, nr, ng, nb) }
+        post {
+          Camera2Bus.onParams?.invoke(
+            mapOf(
+              "iso" to iso,
+              "exposureNs" to exp.toDouble(),
+              "focusDiopters" to focus.toDouble(),
+              "kelvin" to kelvin,
+              "manual" to manual,
+              "awbR" to ar.toDouble(),
+              "awbG" to ag.toDouble(),
+              "awbB" to ab.toDouble(),
+              "neutralR" to nr.toDouble(),
+              "neutralG" to ng.toDouble(),
+              "neutralB" to nb.toDouble(),
+            ),
+          )
+        }
       },
     ).also {
       it.deviceOrientationProvider = { deviceOrientation }
       engine = it
     }
-    e.attach(st, width.coerceAtLeast(1), height.coerceAtLeast(1), facing)
+    e.attach(
+      st,
+      width.coerceAtLeast(1),
+      height.coerceAtLeast(1),
+      if (facingName == "front") CameraCharacteristics.LENS_FACING_FRONT else CameraCharacteristics.LENS_FACING_BACK,
+    )
   }
 
   /**
    * 把预览铺进容器:**保持缓冲原始比例、不做旋转**,等比放大铺满。
-   * 这一步是为了避免以前"把缓冲直接拉伸到容器大小"造成的人物变形。
+   * 这一步是为了避免"把缓冲直接拉伸到容器大小"造成的人物变形。
    */
   private fun fitPreview() {
     val ps = engine?.previewSize ?: return
@@ -123,20 +129,12 @@ class Camera2PreviewView(context: Context) : FrameLayout(context) {
     val vh = height
     if (vw <= 0 || vh <= 0 || ps.width <= 0 || ps.height <= 0) return
 
-    // 旋转交给 RN 层处理(原生 setRotation 在这台设备上不起作用),
-    // 这里只负责把画面按原始比例等比铺满,不拉伸。
-    textureView.layoutParams = LayoutParams(ps.width, ps.height, Gravity.CENTER)
+    textureView.layoutParams = FrameLayout.LayoutParams(ps.width, ps.height, Gravity.CENTER)
     textureView.rotation = 0f
     val scale = kotlin.math.max(vw.toFloat() / ps.width, vh.toFloat() / ps.height)
     textureView.scaleX = scale
     textureView.scaleY = scale
     textureView.requestLayout()
-  }
-
-  override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-    super.onSizeChanged(w, h, oldw, oldh)
-    fitPreview()
-    post { fitPreview() }
   }
 
   private fun restart() {
@@ -175,8 +173,7 @@ class Camera2PreviewView(context: Context) : FrameLayout(context) {
         val out = ByteArrayOutputStream()
         scaled.compress(Bitmap.CompressFormat.JPEG, quality.coerceIn(30, 95), out)
         if (scaled !== bmp) scaled.recycle()
-        val b64 = Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
-        callback(b64, null)
+        callback(Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP), null)
       } catch (t: Throwable) {
         callback(null, t)
       }
@@ -187,23 +184,29 @@ class Camera2PreviewView(context: Context) : FrameLayout(context) {
     engine?.setManual(iso, exposureNs, focusDiopters, kelvin)
   }
 
-  fun capabilities(): Map<String, Any> = engine?.capabilities() ?: emptyMap()
-
-
-  var onEngineReady: ((Int, Int) -> Unit)? = null
-  var onEngineError: ((String) -> Unit)? = null
+  fun capabilities(): Map<String, Any> {
+    val raw = engine?.capabilities() ?: return emptyMap()
+    // Expo 的类型系统不认 FloatArray,统一转成 Double 列表
+    return raw.mapValues { (_, value) ->
+      if (value is FloatArray) value.map { it.toDouble() } else value
+    }
+  }
 
   override fun onAttachedToWindow() {
     super.onAttachedToWindow()
-    Camera2Module.activeView = this
+    Camera2Bus.activeView = this
     if (orientationListener.canDetectOrientation()) orientationListener.enable()
   }
 
   override fun onDetachedFromWindow() {
     orientationListener.disable()
-    // 只有"当前就是自己"时才清空,否则会把另一个还活着的视图踢掉
-    if (Camera2Module.activeView === this) Camera2Module.activeView = null
+    if (Camera2Bus.activeView === this) Camera2Bus.activeView = null
     stop()
     super.onDetachedFromWindow()
+  }
+
+  /** 由 Module 在视图销毁时调用 */
+  fun release() {
+    stop()
   }
 }

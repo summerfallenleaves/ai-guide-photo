@@ -1,0 +1,6 @@
+{
+  "platforms": ["android"],
+  "android": {
+    "modules": ["com.aiguide.photograph.camera.Camera2Module"]
+  }
+}

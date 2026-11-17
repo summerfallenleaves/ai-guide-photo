@@ -195,8 +195,17 @@ Expo 每个 SDK 版本都有破坏性改动,记忆里的 API 很可能已经改�
 
 ## 六、相机:自研 Camera2(重要)
 
-主界面的相机**不是 expo-camera**,而是项目内自研的 Camera2 实现,源码在
-`native/android-camera/`(已入版本控制),同步脚本 `.toolchain/sync-native.sh`。
+主界面的相机**不是 expo-camera**,而是项目内自研的 Camera2 实现。
+
+源码在 **`modules/camera2/`** —— 一个**本地 Expo Module**,由 Expo autolinking 自动接入
+(Gradle 工程名 `aiguide-camera2`)。不需要手动注册、不需要同步脚本。
+
+```bash
+# 改完 Kotlin 直接构建即可,autolinking 会带上
+.toolchain/build.sh assembleRelease
+# 模块自己的单元测试
+.toolchain/build.sh :aiguide-camera2:test
+```
 
 ### 为什么自研
 
@@ -212,15 +221,27 @@ Expo 每个 SDK 版本都有破坏性改动,记忆里的 API 很可能已经改�
 ### 结构
 
 ```
-native/android-camera/
-├── CameraProbeModule.kt     设备能力探测(设置页「相机能力探测」)
-├── CameraProbePackage.kt
-└── camera/
-    ├── Camera2Engine.kt     会话/预览/拍照/手动参数/实时参数回报
-    ├── Camera2PreviewView.kt TextureView + 抓预览帧(base64)
-    ├── Camera2Module.kt     RN 入口:takePicture / grabPreview / setManual / getCapabilities
-    └── Camera2Package.kt    ViewManager + Module 注册
+modules/camera2/                       本地 Expo Module(已入版本控制)
+├── expo-module.config.json            注册 Camera2Module
+├── package.json
+└── android/
+    ├── build.gradle
+    └── src/
+        ├── main/java/com/aiguide/photograph/camera/
+        │   ├── Camera2Engine.kt       会话/预览/拍照/手动参数/实时参数回报
+        │   ├── Camera2View.kt         ExpoView + TextureView,抓预览帧
+        │   ├── Camera2Module.kt       JS 入口:方法 + 事件 + View 定义
+        │   ├── Camera2Bus.kt          引擎 ↔ Module 的事件中转
+        │   └── CameraMath.kt          纯计算(方向公式/尺寸选择),有单测
+        └── test/.../Camera2MathTest.kt
+
+native/android-camera/                 仅剩「相机能力探测」这个调试模块(传统 RN 模块)
+├── CameraProbeModule.kt
+└── CameraProbePackage.kt
 ```
+
+**JS 门面**在 `src/lib/native-camera2.ts`,应用只依赖这一层;它负责优雅降级
+(模块不存在时给可读错误),并由 `__tests__/native-camera2.contract.test.ts` 锁死契约。
 
 ### 关键实现约定
 
@@ -336,15 +357,15 @@ npm run test:all           # 两者都跑
 | 层 | 位置 | 覆盖什么 |
 | --- | --- | --- |
 | JS 单元 | `__tests__/*.test.ts` | 纯逻辑 + **JS↔原生契约** |
-| Kotlin 单元 | `native/android-camera/test/` | 方向公式、尺寸选择等纯计算 |
+| Kotlin 单元 | `modules/camera2/android/src/test/` | 方向公式、尺寸选择等纯计算 |
 | 手工回归 | [docs/REGRESSION.md](./docs/REGRESSION.md) | 相机行为(必须真机) |
 
 **最重要的那组是 `__tests__/native-camera2.contract.test.ts`**:它锁死了 JS 调原生模块的
 方法名、参数顺序、事件名和降级行为。重构相机模块(例如改成 Expo Module)时,
 只要这组测试还绿,JS 调用面就没变。
 
-Kotlin 测试源码放在 `native/android-camera/test/`,`sync-native.sh` 会一起复制到
-`android/app/src/test/`,并自动注入 junit 依赖。
+Kotlin 测试源码放在 `modules/camera2/android/src/test/`,直接跑
+`.toolchain/build.sh :aiguide-camera2:test`(工程名来自 autolinking)。
 
 ---
 
@@ -406,8 +427,8 @@ npx tsc --noEmit && npx eslint src --ext .ts,.tsx   # 先过类型和 lint
 
 1. `ANDROID_USER_HOME` 与 `ANDROID_PREFS_ROOT` **不能同时设置**,只保留前者
 2. Gradle 依赖必须走阿里云镜像(官方源 127KB/s,镜像 1.4MB/s)
-3. **`prebuild --clean` 会冲掉自研相机的 Kotlin 代码**(在 `android/` 里,不入库),
-   重建后必须执行 `.toolchain/sync-native.sh` 恢复源码与 Package 注册
+3. 相机代码在 `modules/camera2/`,**不受 prebuild 影响**(v3.0.0 起)。
+   只有 `native/android-camera/` 的探针模块仍需 `.toolchain/sync-native.sh` 同步进 `android/`
 4. **`prebuild --clean` 还会冲掉三处手工修改**,重建后要重新应用:
    - `android/gradle.properties`:`jvmargs` 提到 4G、`reactNativeArchitectures=arm64-v8a`、
      `android.enableMinifyInReleaseBuilds=false`

@@ -1,18 +1,20 @@
-import {
-  DeviceEventEmitter,
-  NativeModules,
-  requireNativeComponent,
-  type ViewProps,
-} from 'react-native';
+import { requireNativeView, requireOptionalNativeModule } from 'expo';
+import type { ComponentType } from 'react';
+
+/**
+ * 自研相机模块的 JS 门面。
+ *
+ * 原生实现在 `modules/camera2`(本地 Expo Module),这层负责:
+ * - 给应用提供稳定的类型和方法名
+ * - 模块不存在时优雅降级(Expo Go 里没有这个原生模块)
+ *
+ * ⚠️ 对外契约由 `__tests__/native-camera2.contract.test.ts` 保护:
+ * 方法名、参数顺序、事件名、降级行为都不能随意改。
+ */
+
+const MODULE_NAME = 'Camera2Camera';
 
 export type Camera2Facing = 'back' | 'front';
-
-type Camera2PreviewProps = ViewProps & {
-  facing?: Camera2Facing;
-};
-
-/** 原生 Camera2 预览视图(需要本地构建的 APK,Expo Go 里不存在) */
-export const Camera2Preview = requireNativeComponent<Camera2PreviewProps>('Camera2Preview');
 
 export type Camera2Caps = {
   isoMin: number;
@@ -45,7 +47,9 @@ export type Camera2Params = {
   neutralB?: number;
 };
 
-type Camera2ModuleType = {
+type Subscription = { remove: () => void };
+
+type Camera2NativeModule = {
   takePicture(): Promise<string>;
   grabPreview(targetWidth: number, quality: number): Promise<string>;
   setManual(
@@ -54,10 +58,20 @@ type Camera2ModuleType = {
     focusDiopters: number | null,
     kelvin: number | null,
   ): void;
-  getCapabilities(): Promise<Camera2Caps>;
+  getCapabilities(): Promise<Camera2CapsFull>;
+  addListener(eventName: string, listener: (payload: unknown) => void): Subscription;
 };
 
-const native = (NativeModules as Record<string, Camera2ModuleType | undefined>).Camera2Module;
+const native = requireOptionalNativeModule<Camera2NativeModule>(MODULE_NAME);
+
+export type Camera2PreviewProps = {
+  style?: unknown;
+  facing?: Camera2Facing;
+};
+
+/** 原生预览视图(需要本地构建的 APK,Expo Go 里不存在) */
+export const Camera2Preview: ComponentType<Camera2PreviewProps> =
+  requireNativeView<Camera2PreviewProps>(MODULE_NAME);
 
 export function isNativeCameraAvailable(): boolean {
   return !!native;
@@ -92,21 +106,27 @@ export function setManual(params: Partial<{
 
 export async function getCapabilities(): Promise<Camera2CapsFull | null> {
   if (!native) return null;
-  return (await native.getCapabilities()) as Camera2CapsFull;
+  return native.getCapabilities();
 }
 
 export function addParamsListener(cb: (p: Camera2Params) => void): () => void {
-  const sub = DeviceEventEmitter.addListener('Camera2Params', cb);
+  if (!native) return () => {};
+  const sub = native.addListener('onParams', (payload) => cb(payload as Camera2Params));
   return () => sub.remove();
 }
 
 export function addErrorListener(cb: (message: string) => void): () => void {
-  const sub = DeviceEventEmitter.addListener('Camera2Error', cb);
+  if (!native) return () => {};
+  const sub = native.addListener('onError', (payload) => {
+    const message = (payload as { message?: string } | undefined)?.message;
+    cb(message ?? '相机出错了');
+  });
   return () => sub.remove();
 }
 
 export function addReadyListener(cb: () => void): () => void {
-  const sub = DeviceEventEmitter.addListener('Camera2Ready', cb);
+  if (!native) return () => {};
+  const sub = native.addListener('onReady', () => cb());
   return () => sub.remove();
 }
 

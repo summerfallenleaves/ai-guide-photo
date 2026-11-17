@@ -1,0 +1,6 @@
+{
+  "name": "@aiguide/camera2",
+  "version": "1.0.0",
+  "private": true,
+  "description": "自研 Camera2 相机:预览、拍照、手动 ISO/快门/对焦/白平衡"
+}
