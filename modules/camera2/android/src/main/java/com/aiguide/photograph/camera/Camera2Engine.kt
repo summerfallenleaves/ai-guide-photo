@@ -108,14 +108,25 @@ class Camera2Engine(
     viewWidth: Int,
     viewHeight: Int,
     facing: Int = CameraCharacteristics.LENS_FACING_BACK,
+    attempt: Int = 0,
   ) {
     handler.post {
       if (disposed) return@post
       try {
         detachInternal()
         val manager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
-        val cameraId = pickCameraId(manager, facing) ?: run {
-          onError("找不到指定朝向的相机")
+
+        // 刚从后台回来时相机服务可能还没恢复,cameraIdList 会是空的。
+        // 这种情况要等一等再试,不能当成"没有相机"直接放弃(否则预览一直黑屏)。
+        val cameraId = pickCameraId(manager, facing)
+        if (cameraId == null) {
+          if (attempt < 12) {
+            handler.postDelayed({
+              if (!disposed) attach(surfaceTexture, viewWidth, viewHeight, facing, attempt + 1)
+            }, 500L)
+          } else {
+            onError("相机服务未就绪,请重开应用")
+          }
           return@post
         }
         val chars = manager.getCameraCharacteristics(cameraId)
@@ -164,6 +175,7 @@ class Camera2Engine(
         override fun onDisconnected(device: CameraDevice) {
           device.close()
           cameraDevice = null
+          if (disposed) return
           // 切后台/别的应用抢占都会走到这里:悄悄重开,不要直接吓用户
           if (!disposed && retry < 6) {
             handler.postDelayed({
@@ -179,6 +191,7 @@ class Camera2Engine(
         override fun onError(device: CameraDevice, error: Int) {
           device.close()
           cameraDevice = null
+          if (disposed) return
           // 1=被占用 2=相机数量超限 3=被系统禁用(切后台常见) 4=设备错误,
           // 这几种都值得重试;相机服务不可用(5)就没什么可等的了。
           val recoverable = error == CameraDevice.StateCallback.ERROR_CAMERA_IN_USE ||
@@ -204,10 +217,15 @@ class Camera2Engine(
     }
   }
 
-  private fun pickCameraId(manager: CameraManager, facing: Int): String? =
-    manager.cameraIdList.firstOrNull {
+  private fun pickCameraId(manager: CameraManager, facing: Int): String? = try {
+    val ids = manager.cameraIdList
+    ids.firstOrNull {
       manager.getCameraCharacteristics(it).get(CameraCharacteristics.LENS_FACING) == facing
-    } ?: manager.cameraIdList.firstOrNull()
+    } ?: ids.firstOrNull()
+  } catch (t: Throwable) {
+    // 相机服务正在重启时会抛,交给调用方重试
+    null
+  }
 
   /**
    * 选尺寸。关键:拍摄尺寸不再"取最大",而是**挑长宽比最接近屏幕的**,

@@ -53,15 +53,8 @@ export default function CameraScreen() {
    * 所以必须主动卸载预览、回前台再重新打开,否则会一直失败。
    */
   const [appActive, setAppActive] = useState(true);
+  const appActiveRef = useRef(true);
 
-  useEffect(() => {
-    const sub = AppState.addEventListener('change', (state) => {
-      const active = state === 'active';
-      setAppActive(active);
-      if (!active) setReady(false);
-    });
-    return () => sub.remove();
-  }, []);
   /** API Key 存在设备加密存储里,保存后这里会自动更新 */
   const apiKey = useApiKey();
   const keyReady = !!apiKey;
@@ -89,6 +82,22 @@ export default function CameraScreen() {
   const analyzeBusyRef = useRef(false);
   const captureBusyRef = useRef(false);
   const failuresRef = useRef(0);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      const active = state === 'active';
+      appActiveRef.current = active;
+      setAppActive(active);
+      if (active) {
+        // 回来时清掉后台期间遗留的错误:那多半是挂起/超时造成的假故障
+        setError(null);
+        failuresRef.current = 0;
+      } else {
+        setReady(false);
+      }
+    });
+    return () => sub.remove();
+  }, []);
   /** 每次拍照自增,用来丢弃"上一张"迟到的点评结果 */
   const reviewSeq = useRef(0);
   const flash = useMemo(() => new Animated.Value(0), []);
@@ -164,6 +173,7 @@ export default function CameraScreen() {
   useEffect(() => {
     const offReady = addReadyListener(() => {
       setReady(true);
+      setError(null);
       const pending = pendingAdjustRef.current;
       if (pending) {
         pendingAdjustRef.current = null;
@@ -177,7 +187,10 @@ export default function CameraScreen() {
       paramsRef.current = p;
       setLiveParams(p);
     });
-    const offError = addErrorListener((msg) => setError(msg));
+    const offError = addErrorListener((msg) => {
+      // 后台期间相机被系统断开是正常现象,不要留成红字
+      if (appActiveRef.current) setError(msg);
+    });
     return () => {
       offReady();
       offParams();
@@ -205,6 +218,20 @@ export default function CameraScreen() {
     return () => clearTimeout(timer);
   }, [appliedNote]);
 
+  /** 抓帧:相机刚恢复的前几百毫秒可能还没有画面,重试几次再算失败 */
+  const grabWithRetry = useCallback(async (): Promise<string> => {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        return await grabPreview(1024, 60);
+      } catch (err) {
+        lastError = err;
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error('抓帧失败');
+  }, []);
+
   const runLiveAnalysis = useCallback(async () => {
     // 正在拍照时不抓帧,避免打扰
     if (!ready || analyzeBusyRef.current || captureBusyRef.current) return;
@@ -212,8 +239,9 @@ export default function CameraScreen() {
     analyzeBusyRef.current = true;
     setAnalyzing(true);
     try {
-      // 直接抓预览画面(就是用户看到的那一帧),比拍全尺寸再缩图快得多
-      const base64 = await grabPreview(1024, 60);
+      // 直接抓预览画面(就是用户看到的那一帧),比拍全尺寸再缩图快得多。
+      // 刚从后台回来时纹理可能还没第一帧,重试两次再判定失败,避免假报错。
+      const base64 = await grabWithRetry();
 
       // 取景建议一律用低思考强度:它每几秒就要刷一次,不能被推理拖住
       // 取景建议一律关闭思考:实测 thinking=low 仍会产生 300~800 个思维链 token、
@@ -237,6 +265,8 @@ export default function CameraScreen() {
         failuresRef.current = 0;
       }
     } catch (err) {
+      // 退到后台时在途请求会超时/被系统挂起,这不是真的故障,不该弹红字
+      if (!appActiveRef.current) return;
       failuresRef.current += 1;
       setError((err as Error).message);
       if (failuresRef.current >= MAX_CONSECUTIVE_FAILURES) setPaused(true);
@@ -244,7 +274,7 @@ export default function CameraScreen() {
       analyzeBusyRef.current = false;
       setAnalyzing(false);
     }
-  }, [ready, settings.apiEndpoint, currentMeta]);
+  }, [ready, settings.apiEndpoint, currentMeta, grabWithRetry]);
 
   // 手动重试:清掉暂停状态并立刻跑一次
   const retryNow = useCallback(() => {
