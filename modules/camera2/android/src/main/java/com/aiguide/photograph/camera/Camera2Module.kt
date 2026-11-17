@@ -66,6 +66,22 @@ class Camera2Module : Module() {
       }
     }
 
+    Function("setZoom") { ratio: Float ->
+      Camera2Bus.activeView?.setZoom(ratio)
+    }
+
+    Function("setFlashMode") { mode: String ->
+      Camera2Bus.activeView?.setFlashMode(mode)
+    }
+
+    Function("setExposureCompensation") { steps: Int ->
+      Camera2Bus.activeView?.setExposureCompensation(steps)
+    }
+
+    Function("focusAt") { x: Float, y: Float ->
+      Camera2Bus.activeView?.focusAt(x, y)
+    }
+
     Function("setManual") { iso: Int?, exposureNs: Double?, focusDiopters: Double?, kelvin: Int? ->
       Camera2Bus.activeView?.setManual(
         iso = iso,

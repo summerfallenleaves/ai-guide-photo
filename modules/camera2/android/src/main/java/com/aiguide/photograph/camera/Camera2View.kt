@@ -180,6 +180,14 @@ class Camera2View(context: Context, appContext: AppContext) : ExpoView(context, 
     }
   }
 
+  fun setZoom(ratio: Float) = engine?.setZoom(ratio) ?: Unit
+
+  fun setFlashMode(mode: String) = engine?.setFlashMode(mode) ?: Unit
+
+  fun setExposureCompensation(steps: Int) = engine?.setExposureCompensation(steps) ?: Unit
+
+  fun focusAt(x: Float, y: Float) = engine?.focusAt(x, y) ?: Unit
+
   fun setManual(iso: Int?, exposureNs: Long?, focusDiopters: Float?, kelvin: Int?) {
     engine?.setManual(iso, exposureNs, focusDiopters, kelvin)
   }

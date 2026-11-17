@@ -27,6 +27,14 @@ export type Camera2Caps = {
 export type Camera2CapsFull = Camera2Caps & {
   focalLengthMm?: number;
   aperture?: number;
+  /** 最大数字变焦倍数 */
+  maxZoom?: number;
+  /** 是否有闪光灯 */
+  hasFlash?: boolean;
+  /** 曝光补偿范围(EV 档) */
+  evMin?: number;
+  evMax?: number;
+  evStep?: number;
   /** SENSOR_COLOR_TRANSFORM1(传感器 RGB→XYZ,行优先 9 个数) */
   colorTransform?: number[];
 };
@@ -58,6 +66,10 @@ type Camera2NativeModule = {
     focusDiopters: number | null,
     kelvin: number | null,
   ): void;
+  setZoom(ratio: number): void;
+  setFlashMode(mode: string): void;
+  setExposureCompensation(steps: number): void;
+  focusAt(x: number, y: number): void;
   getCapabilities(): Promise<Camera2CapsFull>;
   addListener(eventName: string, listener: (payload: unknown) => void): Subscription;
 };
@@ -102,6 +114,28 @@ export function setManual(params: Partial<{
     params.focusDiopters ?? null,
     params.kelvin ?? null,
   );
+}
+
+/** 变焦倍数;设备不支持时静默忽略 */
+export function setZoom(ratio: number): void {
+  native?.setZoom(ratio);
+}
+
+export type FlashMode = 'off' | 'auto' | 'torch';
+
+/** 闪光灯:关 / 自动 / 常亮 */
+export function setFlashMode(mode: FlashMode): void {
+  native?.setFlashMode(mode);
+}
+
+/** 曝光补偿,单位是 EV 档(不是 EV 值) */
+export function setExposureCompensation(steps: number): void {
+  native?.setExposureCompensation(steps);
+}
+
+/** 点按对焦:x/y 为预览画面里的归一化坐标(0~1) */
+export function focusAt(x: number, y: number): void {
+  native?.focusAt(x, y);
 }
 
 export async function getCapabilities(): Promise<Camera2CapsFull | null> {

@@ -2,6 +2,7 @@ package com.aiguide.photograph.camera
 
 import android.content.Context
 import android.graphics.ImageFormat
+import android.graphics.Rect
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraCharacteristics
@@ -9,6 +10,7 @@ import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CaptureRequest
 import android.hardware.camera2.TotalCaptureResult
+import android.hardware.camera2.params.MeteringRectangle
 import android.hardware.camera2.params.RggbChannelVector
 import android.hardware.camera2.params.StreamConfigurationMap
 import android.media.ImageReader
@@ -59,6 +61,15 @@ class Camera2Engine(
   /** 一旦 destroy,后续异步回调都必须放弃,否则会把相机漏在打开状态 */
   private var disposed = false
 
+  /** 变焦倍数(数字裁切),1f 表示不裁 */
+  private var zoomRatio: Float = 1f
+  /** 闪光灯模式:"off" / "auto" / "torch" */
+  private var flashMode: String = "off"
+  /** 曝光补偿(单位 EV 档) */
+  private var exposureCompensation: Int = 0
+  /** 点按对焦的区域(传感器坐标系),null 表示中央自动 */
+  private var focusRegion: Rect? = null
+
   /** 手动参数;null 表示该轴走自动 */
   private var iso: Int? = null
   private var exposureNs: Long? = null
@@ -91,7 +102,17 @@ class Camera2Engine(
     } else {
       FloatArray(0)
     }
+    val maxZoom = c.get(CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM) ?: 1f
+    val hasFlash = (c.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) ?: false)
+    val evRange = c.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE)
+    val evStep = c.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_STEP)
+    val evStepValue = if (evStep != null) evStep.toFloat() else 0.33333334f
     return mapOf(
+      "maxZoom" to maxZoom,
+      "hasFlash" to hasFlash,
+      "evMin" to ((evRange?.lower ?: 0) * evStepValue),
+      "evMax" to ((evRange?.upper ?: 0) * evStepValue),
+      "evStep" to evStepValue,
       "colorTransform" to colorMatrix,
       "focalLengthMm" to focal,
       "aperture" to aperture,
@@ -361,6 +382,54 @@ class Camera2Engine(
       setAutoFocus(b, afModes)
     }
 
+    // --- 变焦(SENSOR 裁切区域) ---
+    val active = c?.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE)
+    if (active != null && zoomRatio > 1f) {
+      val cropW = (active.width() / zoomRatio).toInt().coerceAtLeast(1)
+      val cropH = (active.height() / zoomRatio).toInt().coerceAtLeast(1)
+      val left = active.centerX() - cropW / 2
+      val top = active.centerY() - cropH / 2
+      try {
+        b.set(CaptureRequest.SCALER_CROP_REGION, Rect(left, top, left + cropW, top + cropH))
+      } catch (t: Throwable) {
+        onError("变焦不被支持:${t.message}")
+      }
+    }
+
+    // --- 闪光灯 ---
+    try {
+      when (flashMode) {
+        "torch" -> {
+          b.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
+          b.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_TORCH)
+        }
+        "auto" -> {
+          b.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON_AUTO_FLASH)
+          b.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF)
+        }
+        else -> b.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF)
+      }
+    } catch (t: Throwable) {
+      onError("闪光灯不被支持:${t.message}")
+    }
+
+    // --- 曝光补偿(自动曝光下才有效) ---
+    try {
+      b.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, exposureCompensation)
+    } catch (_: Throwable) {
+    }
+
+    // --- 点按对焦区域 ---
+    val region = focusRegion
+    if (region != null) {
+      val meter = MeteringRectangle(region, MeteringRectangle.METERING_WEIGHT_MAX)
+      try {
+        b.set(CaptureRequest.CONTROL_AF_REGIONS, arrayOf(meter))
+        b.set(CaptureRequest.CONTROL_AE_REGIONS, arrayOf(meter))
+      } catch (_: Throwable) {
+      }
+    }
+
     // --- 白平衡 ---
     val awbModes = c?.get(CameraCharacteristics.CONTROL_AWB_AVAILABLE_MODES)
     val k = kelvin
@@ -429,6 +498,46 @@ class Camera2Engine(
         nr, ng, nb,
       )
     }
+  }
+
+  fun setZoom(ratio: Float) {
+    val max = characteristics?.get(CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM) ?: 1f
+    zoomRatio = ratio.coerceIn(1f, max)
+    handler.post { applyRepeatingRequest() }
+  }
+
+  fun setFlashMode(mode: String) {
+    flashMode = if (mode == "torch" || mode == "auto") mode else "off"
+    handler.post { applyRepeatingRequest() }
+  }
+
+  fun setExposureCompensation(steps: Int) {
+    exposureCompensation = steps
+    handler.post { applyRepeatingRequest() }
+  }
+
+  /**
+   * 点按对焦。x/y 是预览画面里的归一化坐标(0~1)。
+   * 转成传感器坐标后作为一个测光/对焦区域下发,并触发一次 AF。
+   */
+  fun focusAt(x: Float, y: Float) {
+    val c = characteristics ?: return
+    val active = c.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE) ?: return
+    val sensorW = active.width().toFloat()
+    val sensorH = active.height().toFloat()
+    val centerX = active.left + (x.coerceIn(0f, 1f) * sensorW).toInt()
+    val centerY = active.top + (y.coerceIn(0f, 1f) * sensorH).toInt()
+    val halfW = (sensorW * 0.08f).toInt()
+    val halfH = (sensorH * 0.08f).toInt()
+    focusRegion = Rect(
+      (centerX - halfW).coerceAtLeast(active.left),
+      (centerY - halfH).coerceAtLeast(active.top),
+      (centerX + halfW).coerceAtMost(active.right),
+      (centerY + halfH).coerceAtMost(active.bottom),
+    )
+    // 解除手动对焦,回到自动,才能让这次"点按"生效
+    focusDiopters = null
+    handler.post { applyRepeatingRequest() }
   }
 
   fun setManual(isoValue: Int?, exposureValue: Long?, focusValue: Float?, kelvinValue: Int?) {

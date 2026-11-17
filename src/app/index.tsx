@@ -1,10 +1,12 @@
 
 import * as Haptics from 'expo-haptics';
 import { router, useFocusEffect } from 'expo-router';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, AppState, Linking, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { FlashButton } from '@/components/flash-button';
 import { GridOverlay } from '@/components/grid-overlay';
 import { LevelBadge } from '@/components/level-badge';
 import { RotateButton } from '@/components/rotate-button';
@@ -16,6 +18,9 @@ import { useApiKey } from '@/hooks/use-api-key';
 import { useCameraPermission } from '@/hooks/use-camera-permission';
 import {
   addErrorListener,
+  focusAt,
+  setFlashMode,
+  setZoom as setZoomValue,
   formatShutterNs,
   parseShutterToNs,
   setManual,
@@ -27,6 +32,7 @@ import {
   takePicture,
   type Camera2CapsFull,
   type Camera2Params,
+  type FlashMode,
 } from '@/lib/native-camera2';
 import { toAnalysisBase64 } from '@/lib/analysis-image';
 import type { PhotoMeta } from '@/lib/exif';
@@ -35,7 +41,7 @@ import { setLastCapture, setReviewState, takePendingAdjust } from '@/lib/capture
 import { addHistoryEntry, loadHistory, persistPhoto, updateHistoryEntry } from '@/lib/history';
 import { liveAnalysisEnabled, thinkingOf, useSettings } from '@/lib/settings';
 import { saveToAlbum } from '@/lib/media';
-import { palette, radius, spacing, type, weight } from '@/lib/theme';
+import { palette, radius, spacing, tabularNums, type, weight } from '@/lib/theme';
 
 const MAX_CONSECUTIVE_FAILURES = 3;
 
@@ -59,6 +65,18 @@ export default function CameraScreen() {
   const apiKey = useApiKey();
   const keyReady = !!apiKey;
   const [showGrid, setShowGrid] = useState(true);
+  /** 当前变焦倍数(数字变焦) */
+  const [zoom, setZoom] = useState(1);
+  const zoomRef = useRef(1);
+  const zoomSentRef = useRef(1);
+  /** 预览区域的实际尺寸,用于把点按位置换算成 0~1 坐标 */
+  const previewSizeRef = useRef({ width: 0, height: 0 });
+  const pinchStartRef = useRef(1);
+  /** 点按对焦的位置(屏幕坐标) */
+  const [focusPoint, setFocusPoint] = useState<{ x: number; y: number } | null>(null);
+  const [flashMode, setFlashModeState] = useState<FlashMode>('off');
+  /** 相机硬件能力(最大变焦、闪光灯、曝光补偿范围) */
+  const [caps, setCaps] = useState<Camera2CapsFull | null>(null);
   /** 连续失败后暂停自动分析,直到用户手动重试(不改用户设置) */
   const [paused, setPaused] = useState(false);
 
@@ -179,8 +197,11 @@ export default function CameraScreen() {
         pendingAdjustRef.current = null;
         applyAdjust(pending);
       }
-      void getCapabilities().then((caps) => {
-        if (caps) capsRef.current = caps;
+      void getCapabilities().then((result) => {
+        if (result) {
+          capsRef.current = result;
+          setCaps(result);
+        }
       });
     });
     const offParams = addParamsListener((p) => {
@@ -274,14 +295,71 @@ export default function CameraScreen() {
       analyzeBusyRef.current = false;
       setAnalyzing(false);
     }
-  }, [ready, settings.apiEndpoint, currentMeta, grabWithRetry]);
+  }, [ready, settings.apiEndpoint, currentMeta, grabWithRetry, setError, setPaused, setAnalyzing, setSuggestion]);
+
+  /* eslint-disable react-hooks/refs, react-hooks/preserve-manual-memoization --
+     手势回调是在用户操作时执行的,不是渲染期访问 ref。
+     React Compiler 无法建模 Gesture API 的调用时机,这里显式豁免。 */
+  const pinchGesture = useMemo(
+    () =>
+      Gesture.Pinch()
+        .runOnJS(true)
+        .onBegin(() => {
+          pinchStartRef.current = zoomRef.current;
+        })
+        .onUpdate((event) => {
+          const max = capsRef.current?.maxZoom ?? 4;
+          const next = Math.min(max, Math.max(1, pinchStartRef.current * event.scale));
+          if (Math.abs(next - zoomRef.current) > 0.02) {
+            zoomRef.current = next;
+            setZoom(next);
+            if (Math.abs(next - zoomSentRef.current) > 0.05) {
+              zoomSentRef.current = next;
+              setZoomValue(next);
+            }
+          }
+        }),
+    [],
+  );
+
+  const tapGesture = useMemo(
+    () =>
+      Gesture.Tap()
+        .runOnJS(true)
+        .onEnd((event) => {
+          const { width, height } = previewSizeRef.current;
+          if (!width || !height) return;
+          const nx = Math.min(1, Math.max(0, event.x / width));
+          const ny = Math.min(1, Math.max(0, event.y / height));
+          focusAt(nx, ny);
+          setFocusPoint({ x: event.x, y: event.y });
+          setTimeout(() => setFocusPoint(null), 1200);
+        }),
+    [],
+  );
+
+  const previewGesture = useMemo(
+    () => Gesture.Simultaneous(pinchGesture, tapGesture),
+    [pinchGesture, tapGesture],
+  );
+
+  /* eslint-enable react-hooks/refs, react-hooks/preserve-manual-memoization */
+
+  /** 闪光灯三态循环 */
+  const cycleFlash = useCallback(() => {
+    setFlashModeState((prev) => {
+      const next: FlashMode = prev === 'off' ? 'auto' : prev === 'auto' ? 'torch' : 'off';
+      setFlashMode(next);
+      return next;
+    });
+  }, [setFlashModeState]);
 
   // 手动重试:清掉暂停状态并立刻跑一次
   const retryNow = useCallback(() => {
     setPaused(false);
     failuresRef.current = 0;
     void runLiveAnalysis();
-  }, [runLiveAnalysis]);
+  }, [runLiveAnalysis, setPaused]);
 
   useEffect(() => {
     if (!liveOn || paused || !focused || !appActive || !ready || !keyReady || !permission.granted) return;
@@ -291,7 +369,7 @@ export default function CameraScreen() {
       clearTimeout(warmup);
       clearInterval(timer);
     };
-  }, [liveOn, paused, focused, appActive, ready, keyReady, permission.granted, runLiveAnalysis, settings.intervalSec]);
+  }, [liveOn, paused, focused, appActive, ready, keyReady, permission.granted, runLiveAnalysis, settings.intervalSec, setPaused]);
 
   const handleCapture = useCallback(async () => {
     if (!ready || captureBusyRef.current) return;
@@ -389,7 +467,7 @@ export default function CameraScreen() {
       captureBusyRef.current = false;
       setCapturing(false);
     }
-  }, [flash, ready, settings, currentMeta]);
+  }, [flash, ready, settings, currentMeta, setCapturing, setError]);
 
   if (!permission.checked) {
     return (
@@ -442,6 +520,34 @@ export default function CameraScreen() {
       {/* 三分线必须在预览之后,否则会被原生视图盖住 */}
       <GridOverlay visible={showGrid && focused && appActive} />
 
+      {/* 取景操作层:双指缩放 + 点按对焦 */}
+      <GestureDetector gesture={previewGesture}>
+        <View
+          style={StyleSheet.absoluteFill}
+          onLayout={(e) => {
+            previewSizeRef.current = {
+              width: e.nativeEvent.layout.width,
+              height: e.nativeEvent.layout.height,
+            };
+          }}
+        />
+      </GestureDetector>
+
+      {/* 对焦框 */}
+      {focusPoint ? (
+        <View
+          pointerEvents="none"
+          style={[styles.focusRing, { left: focusPoint.x - 36, top: focusPoint.y - 36 }]}
+        />
+      ) : null}
+
+      {/* 变焦倍率提示:不在 1x 时才显示 */}
+      {zoom > 1.05 ? (
+        <View pointerEvents="none" style={styles.zoomPill}>
+          <Text style={styles.zoomText}>{zoom.toFixed(1)}x</Text>
+        </View>
+      ) : null}
+
       {isLandscape ? (
         /* 横屏:右侧浮动一列,背景透明,元素各自带半透明底,和竖屏卡片是同一套视觉语言 */
         <SafeAreaView
@@ -450,6 +556,7 @@ export default function CameraScreen() {
           pointerEvents="box-none">
           <View style={styles.panelTopRow} pointerEvents="box-none">
             <LevelBadge tilt={tilt} />
+            {caps?.hasFlash ? <FlashButton mode={flashMode} onPress={cycleFlash} /> : null}
             <RotateButton onPress={() => void toggleOrientation()} locked={locked} />
           </View>
 
@@ -689,6 +796,28 @@ const styles = StyleSheet.create({
     height: 62,
     borderRadius: 31,
     backgroundColor: palette.text,
+  },
+  focusRing: {
+    position: 'absolute',
+    width: 72,
+    height: 72,
+    borderRadius: radius.sm,
+    borderWidth: 1.5,
+    borderColor: palette.accent,
+  },
+  zoomPill: {
+    position: 'absolute',
+    bottom: '22%',
+    alignSelf: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.pill,
+    backgroundColor: palette.scrim,
+  },
+  zoomText: {
+    ...type.callout,
+    color: palette.accent,
+    ...tabularNums,
   },
   appliedPill: {
     alignSelf: 'center',

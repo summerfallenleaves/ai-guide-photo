@@ -11,6 +11,10 @@ type NativeMock = {
   takePicture: jest.Mock;
   grabPreview: jest.Mock;
   setManual: jest.Mock;
+  setZoom: jest.Mock;
+  setFlashMode: jest.Mock;
+  setExposureCompensation: jest.Mock;
+  focusAt: jest.Mock;
   getCapabilities: jest.Mock;
   addListener: jest.Mock;
   __emit: (event: string, payload: unknown) => void;
@@ -29,6 +33,10 @@ function createNativeMock(): NativeMock {
     takePicture: jest.fn(async () => '/data/cache/camera2-1.jpg'),
     grabPreview: jest.fn(async () => 'BASE64DATA'),
     setManual: jest.fn(),
+    setZoom: jest.fn(),
+    setFlashMode: jest.fn(),
+    setExposureCompensation: jest.fn(),
+    focusAt: jest.fn(),
     getCapabilities: jest.fn(async () => ({
       isoMin: 100,
       isoMax: 800,
@@ -112,6 +120,40 @@ describe('原生模块存在时', () => {
   it('getCapabilities 返回原生给的对象', async () => {
     const { mod } = loadModule();
     await expect(mod.getCapabilities()).resolves.toMatchObject({ isoMin: 100, isoMax: 800, aperture: 1.6 });
+  });
+});
+
+describe('取景控制(缩放/闪光灯/曝光补偿/对焦)', () => {
+  it('setZoom 直接传倍数', () => {
+    const { mod, native } = loadModule();
+    mod.setZoom(2.5);
+    expect(native.setZoom).toHaveBeenCalledWith(2.5);
+  });
+
+  it('setFlashMode 传 off/auto/torch', () => {
+    const { mod, native } = loadModule();
+    mod.setFlashMode('torch');
+    expect(native.setFlashMode).toHaveBeenCalledWith('torch');
+  });
+
+  it('setExposureCompensation 传的是 EV 档数', () => {
+    const { mod, native } = loadModule();
+    mod.setExposureCompensation(-3);
+    expect(native.setExposureCompensation).toHaveBeenCalledWith(-3);
+  });
+
+  it('focusAt 传归一化坐标', () => {
+    const { mod, native } = loadModule();
+    mod.focusAt(0.25, 0.75);
+    expect(native.focusAt).toHaveBeenCalledWith(0.25, 0.75);
+  });
+
+  it('原生缺失时,这四个方法都静默不抛错', () => {
+    const mod = loadWithoutNative();
+    expect(() => mod.setZoom(2)).not.toThrow();
+    expect(() => mod.setFlashMode('auto')).not.toThrow();
+    expect(() => mod.setExposureCompensation(1)).not.toThrow();
+    expect(() => mod.focusAt(0.5, 0.5)).not.toThrow();
   });
 });
 
