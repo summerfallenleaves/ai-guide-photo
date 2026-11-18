@@ -83,6 +83,10 @@ git push -u origin fix/preview-aspect
 
 PR 里请注明**测试机型**——不同厂商的 Camera2 实现差异很大。
 
+## 发布
+
+发版、签名、构建产物约��见 [RELEASING.md](./RELEASING.md)。
+
 ## 文档
 
 - 改架构/约定 → 更新 [AGENTS.md](./AGENTS.md)

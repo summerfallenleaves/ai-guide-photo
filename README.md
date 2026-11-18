@@ -9,6 +9,7 @@
 - 给 AI 协作方的工程约定见 [AGENTS.md](./AGENTS.md)
 - 想一起改代码?先看 [CONTRIBUTING.md](./CONTRIBUTING.md)
 - 发现安全问题请走私密通道,见 [SECURITY.md](./SECURITY.md)
+- 发版流程见 [RELEASING.md](./RELEASING.md)
 
 ---
 
