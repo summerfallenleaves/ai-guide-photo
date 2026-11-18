@@ -77,7 +77,7 @@ jobs:
           rm android/app/release.keystore.b64
           python3 scripts/ci-signing.py android/app/build.gradle release.keystore
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.gradle/caches
