@@ -7,14 +7,19 @@ on:
 
 jobs:
   js:
-    name: 类型检查 / lint / 单元测试
+    name: 类型检查 / lint / 单元测试(Node ${{ matrix.node }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 20 是 package.json 声明的最低版本,22 是当前 LTS
+        node: [20, 22]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: ${{ matrix.node }}
           cache: npm
 
       - name: 安装依赖
