@@ -1,0 +1,24 @@
+name: 功能建议
+description: 想要一个新能力,或改进现有功能
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 你遇到的实际问题
+      description: 先描述场景,再说想要什么。避免只写"加个 XX 功能"。
+      placeholder: 例如:举着手机拍照时看不清卡片上的字,尤其户外逆光。
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: 你希望怎么解决
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        **提交前先看 [TODO.md](../blob/main/TODO.md)**,很多想法已经记在那里了。

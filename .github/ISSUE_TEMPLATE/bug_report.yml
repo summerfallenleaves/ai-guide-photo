@@ -1,0 +1,73 @@
+name: 报告问题
+description: 相机、AI 建议、拍照或构建出问题了
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        相机相关的问题**高度依赖具体机型**,没有机型信息基本无法排查。
+
+  - type: textarea
+    id: what
+    attributes:
+      label: 发生了什么
+      description: 现象是什么?期望是什么?
+      placeholder: 例如:横着拿手机拍,照片是正的,但预览里的画面转了个方向。
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 打开 App
+        2. 切到专业面板,设 ISO 800
+        3. 按快门
+        4. 复盘页全白
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: 机型与系统版本
+      placeholder: 例如:小米 14 / Android 15 / MIUI 2.0
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: App 版本
+      description: 设置页底部显示的版本号
+      placeholder: 0.0.1
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 出问题的部分
+      multiple: true
+      options:
+        - 相机预览
+        - 拍照 / 照片方向
+        - 手动参数(ISO / 快门 / 白平衡 / 对焦)
+        - 缩放 / 对焦 / 闪光灯
+        - 取景建议(AI)
+        - 拍后点评(AI)
+        - 语音播报
+        - 拍照历史
+        - 构建 / 安装
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 报错信息或截图
+      description: 有就贴,没有可以留空
+      render: shell
+    validations:
+      required: false
