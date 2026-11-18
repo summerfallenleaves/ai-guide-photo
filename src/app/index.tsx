@@ -589,7 +589,12 @@ export default function CameraScreen() {
       // 照片先落地:立刻进复盘页,不让用户为了等点评而干站着
       const lastSuggestion = lastSuggestionRef.current;
       setLastCapture({ uri: stableUri, saved, meta: photoMeta, lastSuggestion });
-      setReviewState({ status: 'analyzing' });
+      // 没有 API Key 就不发请求 —— 宁可明说"没有点评",也不要在复盘页转圈到超时
+      setReviewState(
+        keyReady
+          ? { status: 'analyzing' }
+          : { status: 'failed', error: '没有配置 API Key,这张只保存了照片。相机功能不受影响。' },
+      );
       router.push({
         pathname: '/review',
         params: { uri: stableUri, saved: saved ? '1' : '0' },
@@ -608,6 +613,11 @@ export default function CameraScreen() {
         meta: photoMeta,
         status: 'analyzing',
       });
+
+      if (!keyReady) {
+        updateHistoryEntry(entryId, { status: 'failed', error: '没有配置 API Key' });
+        return;
+      }
 
       void (async () => {
           try {
@@ -651,7 +661,7 @@ export default function CameraScreen() {
       captureBusyRef.current = false;
       setCapturing(false);
     }
-  }, [flash, ready, settings, currentMeta, setCapturing, setError]);
+  }, [flash, ready, settings, currentMeta, keyReady, setCapturing, setError]);
 
   /** 倒计时进行中:每秒减一,到 0 自动拍 */
   useEffect(() => {
@@ -711,20 +721,6 @@ export default function CameraScreen() {
             <Text style={styles.gateButtonText}>去设置里打开</Text>
           </Pressable>
         )}
-      </View>
-    );
-  }
-
-  if (!keyReady) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.gateTitle}>还没有配置 API Key</Text>
-        <Text style={styles.gateBody}>
-          Key 只会加密保存在你这台手机上,不会上传到任何服务器,也不在安装包里。
-        </Text>
-        <Pressable style={styles.gateButton} onPress={() => router.push('/settings')}>
-          <Text style={styles.gateButtonText}>去设置</Text>
-        </Pressable>
       </View>
     );
   }
@@ -807,21 +803,32 @@ export default function CameraScreen() {
           </View>
         </View>
 
+        {!keyReady ? (
+          <View style={styles.noKeyBanner} pointerEvents="box-none">
+            <Text style={styles.noKeyText}>没有 API Key · 相机可用,AI 建议和点评不可用</Text>
+            <Pressable onPress={() => router.push('/settings')} hitSlop={8}>
+              <Text style={styles.noKeyAction}>去设置</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
         <View style={styles.bottomBlock} pointerEvents="box-none">
           {appliedNote ? (
             <View style={styles.appliedPill}>
               <Text style={styles.appliedText}>{appliedNote}</Text>
             </View>
           ) : null}
-          <SuggestionCard
-            suggestion={suggestion}
-            analyzing={analyzing}
-            error={error}
-            liveOn={liveOn}
-            paused={paused}
-            onOpenSettings={() => router.push('/settings')}
-            onRefresh={retryNow}
-          />
+          {keyReady ? (
+            <SuggestionCard
+              suggestion={suggestion}
+              analyzing={analyzing}
+              error={error}
+              liveOn={liveOn}
+              paused={paused}
+              onOpenSettings={() => router.push('/settings')}
+              onRefresh={retryNow}
+            />
+          ) : null}
 
           <View style={styles.controls} pointerEvents="box-none">
             <View style={styles.leftControls}>
@@ -1068,6 +1075,24 @@ const styles = StyleSheet.create({
     position: 'absolute',
     overflow: 'hidden',
   },
+  noKeyBanner: {
+    position: 'absolute',
+    left: spacing.xl,
+    right: spacing.xl,
+    top: 92,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    paddingHorizontal: spacing.xxl,
+    paddingVertical: spacing.lg,
+    borderRadius: radius.md,
+    backgroundColor: palette.scrim,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: palette.border,
+  },
+  noKeyText: { ...type.caption, color: palette.textSoft, flex: 1 },
+  noKeyAction: { ...type.caption, color: palette.accent, fontWeight: weight.bold },
   leftControls: { alignItems: 'flex-start', gap: spacing.md },
   appliedPill: {
     alignSelf: 'center',

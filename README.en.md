@@ -70,7 +70,8 @@ three problems, it gets truncated to one and the settings advice is dropped.
 - Photo history: grouped by day, kept for 7 days
 - Growth stats: average score, trend, weakest dimension — computed locally, costs no API calls
 - Voice guidance (off by default): reads suggestions aloud so you don't look down at the screen
-- **Works without an API key** — every camera feature is offline; only the AI needs the key
+- **Works without an API key** — every camera feature is offline. Without a key the app shows a
+  single banner and hides the AI parts; it never blocks the camera
 
 ## Architecture
 
