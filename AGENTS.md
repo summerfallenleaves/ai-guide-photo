@@ -23,7 +23,7 @@
 ### 运行形态
 
 ```bash
-.toolchain/release.sh 3.6.1            # 发布:同步版本号 + 构建 + 命名(见第九节)
+.toolchain/release.sh 0.0.2            # 发布:同步版本号 + 构建 + 命名(见第九节)
 .toolchain/build.sh assembleDebug      # 只验证能否编译
 ```
 
@@ -162,7 +162,7 @@ Expo 每个 SDK 版本都有破坏性改动,记忆里的 API 很可能已经改�
 
 - API Key **不在安装包里**,首次使用在设置页填入
 - 任何"把 Key 写进代码/打包进 APK"的做法都是错的
-- 早期还有一个局域网代理(`server/`),已在 v1.2.1 清理删除;git 历史里仍可找回。
+- 早期还有一个局域网代理(`server/`),已在早期版本清理删除;git 历史里仍可找回。
   若以后要做"服务器托管 Key",把设置页的「接口地址」指向自己的服务即可
 
 ### 4.2 状态分布
@@ -391,7 +391,7 @@ modules/camera2/                       本地 Expo Module(已入版本控制)
 - 抓帧频率别贪高,3 秒一次足够,再快明显发热
 - 水平仪用的是加速度计(`src/hooks/use-tilt.ts`),**横竖握要换轴**:
   `|x|≥|y|` 时用 `atan2(y,|x|)`,否则 `atan2(x,|y|)`。写死竖屏公式会在横屏下算错
-- **界面锁定竖屏**(v3.3.0 起)。三处一起锁,缺一不可:
+- **界面锁定竖屏**(当前做法)。三处一起锁,缺一不可:
   1. `app.json` 的 `orientation: portrait` —— **prebuild 时**生成清单用
   2. `android/app/src/main/AndroidManifest.xml` 的 `android:screenOrientation="portrait"`
      —— 已生成工程里的实际生效值(改 `app.json` 不会自动同步,要重新 prebuild 或手改)
@@ -514,8 +514,8 @@ Kotlin 测试源码放在 `modules/camera2/android/src/test/`,直接跑
 
 ```bash
 npx tsc --noEmit && npx eslint src --ext .ts,.tsx   # 先过类型和 lint
-.toolchain/release.sh 1.0.1                          # 版本号自增
-# 产出:assets/apk/ai-guide-photo-v1.0.1.apk
+.toolchain/release.sh 0.0.2                          # 版本号自增
+# 产出:assets/apk/ai-guide-photo-v0.0.2.apk
 ```
 
 **命名规范**:`ai-guide-photo-v<主>.<次>.<修>.apk`,版本号只增不减。
@@ -555,7 +555,7 @@ npx tsc --noEmit && npx eslint src --ext .ts,.tsx   # 先过类型和 lint
 
 1. `ANDROID_USER_HOME` 与 `ANDROID_PREFS_ROOT` **不能同时设置**,只保留前者
 2. Gradle 依赖必须走阿里云镜像(官方源 127KB/s,镜像 1.4MB/s)
-3. 相机代码在 `modules/camera2/`,**不受 prebuild 影响**(v3.0.0 起)。
+3. 相机代码在 `modules/camera2/`,**不受 prebuild 影响**。
    项目里已没有需要手动同步进 `android/` 的原生代码
 4. **`prebuild --clean` 还会冲掉三处手工修改**,重建后要重新应用:
    - `android/gradle.properties`:`jvmargs` 提到 4G、`reactNativeArchitectures=arm64-v8a`、

@@ -213,12 +213,12 @@ npm run test:all      # 两者都跑
 ```
 
 ```bash
-.toolchain/release.sh 3.6.1
-# 产物:assets/apk/ai-guide-photo-v3.6.1.apk
+.toolchain/release.sh 0.0.2
+# 产物:assets/apk/ai-guide-photo-v0.0.2.apk
 ```
 
 **版本号规则**:文件名 `ai-guide-photo-v<主>.<次>.<修>.apk`;
-`versionCode = 主×10000 + 次×100 + 修`(3.6.1 → 30601),只增不减。
+`versionCode = 主×10000 + 次×100 + 修`(0.0.2 → 2),只增不减。
 
 > ⚠️ `keys/aiguide.keystore` 是 Release 签名密钥。**丢了就没法给已安装的 App 做覆盖升级**
 > (只能卸载重装,用户设置全丢)。
