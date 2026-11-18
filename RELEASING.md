@@ -54,11 +54,28 @@ checkout → Node 22 → JDK 17 → Android SDK/NDK → npm ci
 CI 默认用 **debug 密钥**签名 —— 能安装、能自用,**不能上架,也不能给已安装用户做覆盖升级**。
 首版 `v0.0.1` 的 Release 附件就是这样签的,仅供试用。
 
-要正式签名,在仓库 **Settings → Secrets and variables → Actions** 里配 4 个 secret:
+### 配置位置
+
+**网页端**:仓库 → **Settings** → 左侧 **Secrets and variables** → **Actions** → **New repository secret**
+
+👉 https://github.com/summerfallenleaves/ai-guide-photo/settings/secrets/actions
+
+**命令行**(在项目目录下,需已 `gh auth login`):
+
+```bash
+gh secret set KEYSTORE_BASE64   < my-release.keystore.b64
+gh secret set KEYSTORE_PASSWORD --body "你的store密码"
+gh secret set KEY_ALIAS         --body "mykey"
+gh secret set KEY_PASSWORD      --body "你的key密码"
+
+gh secret list    # 只能看到名字,看不到值(建的时候写一次,之后不可读)
+```
+
+要配 4 个 secret:
 
 | Secret | 内容 |
 | --- | --- |
-| `KEYSTORE_BASE64` | keystore 文件的 base64:`base64 -i my-release.keystore \| pbcopy` |
+| `KEYSTORE_BASE64` | keystore 文件的 base64(macOS:`base64 -i my-release.keystore \| pbcopy`;Linux:`base64 -w0 my-release.keystore`) |
 | `KEYSTORE_PASSWORD` | store password |
 | `KEY_ALIAS` | key alias |
 | `KEY_PASSWORD` | key password |
@@ -75,9 +92,27 @@ keytool -genkeypair -v -keystore my-release.keystore \
 
 > ⚠️ 密钥丢了就无法覆盖升级已安装的 App(只能卸载重装,用户数据全丢)。**多处备份。**
 
+**建议直接用本地已有的 `.toolchain/keys/aiguide.keystore`**(别名 `aiguide`),
+这样 CI 构建的包和你本地构建的包**签名一致**,可以互相覆盖升级。
+
 ---
 
-## 三、发布前检查清单
+## 三、谁能打 tag
+
+**默认所有有写权限的协作者都能推 tag**,而推 `v*` tag 会触发发布流水线 ——
+等于谁都能发版。所以仓库加了**标签保护规则**(`发布 tag 保护`):
+
+| 规则 | 效果 |
+| --- | --- |
+| creation | 只有管理员能新建 `v*` tag |
+| update | 只能管理员移动已有 tag |
+| deletion | 只能管理员删除 tag |
+
+协作者仍然可以正常提交代码、开 PR、合并,但**发版这一步只有你能做**。
+
+> 想放开给某人:Settings → Rules → Rulesets → `发布 tag 保护` → 把对方加入 bypass 列表。
+
+## 四、发布前检查清单
 
 ```bash
 npx tsc --noEmit                        # 类型
@@ -94,7 +129,7 @@ npm test                                # 单元测试
 
 ---
 
-## 四、CI 构建的两个坑(都踩过)
+## 五、CI 构建的两个坑(都踩过)
 
 **1. `gradle.properties` 末尾没有换行符**
 
@@ -112,7 +147,7 @@ expo.camera.barcode-scanner-enabled=falsereactNativeArchitectures=arm64-v8a
 prebuild 默认四种 ABI 全编(armeabi-v7a / arm64-v8a / x86 / x86_64)。
 只留 `arm64-v8a` 后降到 **35MB**,C++ 编译也快一半。
 
-## 五、构建产物里不该有的东西
+## 六、构建产物里不该有的东西
 
 CI 的构建路径是 `/home/runner/work/...`,不含个人信息,可以放心分发。
 
@@ -131,7 +166,7 @@ unzip -p assets/apk/xxx.apk lib/arm64-v8a/libappmodules.so | strings | grep "/Us
 
 ---
 
-## 六、出问题时
+## 七、出问题时
 
 | 现象 | 排查 |
 | --- | --- |
@@ -143,7 +178,7 @@ unzip -p assets/apk/xxx.apk lib/arm64-v8a/libappmodules.so | strings | grep "/Us
 
 ---
 
-## 七、本地发布脚本做了什么
+## 八、本地发布脚本做了什么
 
 `scripts/release.sh <版本>`:
 
