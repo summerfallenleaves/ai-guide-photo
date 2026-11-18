@@ -23,8 +23,8 @@
 ### 运行形态
 
 ```bash
-.toolchain/release.sh 0.0.2            # 发布:同步版本号 + 构建 + 命名(见第九节)
-.toolchain/build.sh assembleDebug      # 只验证能否编译
+scripts/release.sh 0.0.2               # 发布:同步版本号 + 构建 + 命名(见第九节)
+scripts/build.sh assembleDebug         # 只验证能否编译
 ```
 
 **Expo Go 跑不了本项目** —— 相机是自研原生模块,Expo Go 里没有。
@@ -304,9 +304,9 @@ Expo 每个 SDK 版本都有破坏性改动,记忆里的 API 很可能已经改�
 
 ```bash
 # 改完 Kotlin 直接构建即可,autolinking 会带上
-.toolchain/build.sh assembleRelease
+scripts/build.sh assembleRelease
 # 模块自己的单元测试
-.toolchain/build.sh :aiguide-camera2:test
+scripts/build.sh :aiguide-camera2:test
 ```
 
 ### 为什么自研
@@ -493,7 +493,7 @@ npm run test:all           # 两者都跑
 只要这组测试还绿,JS 调用面就没变。
 
 Kotlin 测试源码放在 `modules/camera2/android/src/test/`,直接跑
-`.toolchain/build.sh :aiguide-camera2:test`(工程名来自 autolinking)。
+`scripts/build.sh :aiguide-camera2:test`(工程名来自 autolinking)。
 
 ---
 
@@ -514,7 +514,7 @@ Kotlin 测试源码放在 `modules/camera2/android/src/test/`,直接跑
 
 ```bash
 npx tsc --noEmit && npx eslint src --ext .ts,.tsx   # 先过类型和 lint
-.toolchain/release.sh 0.0.2                          # 版本号自增
+scripts/release.sh 0.0.2                          # 版本号自增
 # 产出:assets/apk/ai-guide-photo-v0.0.2.apk
 ```
 
@@ -529,25 +529,29 @@ npx tsc --noEmit && npx eslint src --ext .ts,.tsx   # 先过类型和 lint
 >
 > 只改 `app.json` 打出来的包版本号不会变。`release.sh` 已经处理了这件事。
 
-只需验证能否编译而不出包时,可以用 `.toolchain/build.sh assembleDebug`。
+只需验证能否编译而不出包时,可以用 `scripts/build.sh assembleDebug`。
 
 - 首次构建约 12 分钟(C++ 要为 5 个原生模块各编一遍 arm64),**增量 20 秒~4 分钟**
 - `build.sh` 会自动导出 `JAVA_HOME` / `ANDROID_HOME` / `GRADLE_USER_HOME` / `ANDROID_USER_HOME`
 
-### 工具链位置
+### 构建脚本与工具链
 
-工具链**全部在项目内**,不写系统目录(沙箱只有工作区可写):
+**脚本入库**(`scripts/`),**工具链不入库**(`.toolchain/`):
 
 ```
-.toolchain/
-├── jdk17/                    OpenJDK 17
-├── android-sdk/              compileSdk 36 / build-tools 37.0.0 / NDK 27.1.12297006 / CMake
-├── gradle-home/              Gradle 9.4.1 缓存 + init.d/aliyun-mirrors.gradle(国内 Maven 镜像)
-├── android-user-home/        替代 ~/.android
-├── keys/aiguide.keystore     Release 签名密钥
-├── downloads/                组件压缩包与下载脚本(可删)
-└── build.sh                  构建入口
+scripts/build.sh      构建入口,自动定位 JAVA_HOME / ANDROID_HOME
+scripts/release.sh    同步版本号 + 构建 + 命名产物
+
+.toolchain/           ← gitignore,只有本仓库维护者有
+├── jdk17/            OpenJDK 17
+├── android-sdk/      SDK 36 / build-tools 37 / NDK 27.1.12297006 / CMake
+├── gradle-home/      Gradle 缓存 + 阿里云镜像
+├── android-user-home/  替代 ~/.android(沙箱不可写时用)
+└── keys/aiguide.keystore   Release 签名密钥(千万别提交)
 ```
+
+`scripts/build.sh` 的查找顺序:**已导出的环境变量 → 项目内 `.toolchain/` → 系统 JDK/SDK**。
+所以别人克隆后只需装 JDK 17 + Android SDK,不必有 `.toolchain/`。
 
 `android/` 由 `npx expo prebuild` 生成,已在 gitignore 中。
 

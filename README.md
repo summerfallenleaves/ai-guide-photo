@@ -71,6 +71,7 @@ src/app/                  页面(Expo Router,文件即路由)
 src/components/           建议卡片 / 三分线 / 水平仪 / 闪光灯按钮 / 专业参数面板
 src/hooks/                相机权限、水平仪、朝向
 src/lib/                  设置、密钥、DeepSeek 客户端、图像处理、历史、设计 token
+scripts/                  构建脚本(build.sh / release.sh,可移植)
 modules/camera2/          ★ 自研相机(本地 Expo Module):预览/拍照/参数/方向
 __tests__/                JS 单元测试(含 JS↔原生契约)
 docs/REGRESSION.md        真机回归清单
@@ -127,6 +128,10 @@ docs/REGRESSION.md        真机回归清单
 
 装好后打开 App → 设置里填 DeepSeek API Key(来自 <https://platform.deepseek.com>)→
 点「测试连接」确认可用。
+
+### 从源码自己编
+
+见下文 [从源码构建 APK](#从源码构建-apk)。
 
 ### 关于 Expo Go
 
@@ -198,30 +203,86 @@ npm run test:all      # 两者都跑
 
 ---
 
-## 本地构建
+## 从源码构建 APK
 
-工具链全部装在项目内的 `.toolchain/`(不入库),不污染系统:
+### 环境要求
 
-```
-.toolchain/
-├── jdk17/              OpenJDK 17
-├── android-sdk/        compileSdk 36 / build-tools 37 / NDK 27.1 / CMake
-├── gradle-home/        Gradle 缓存 + 阿里云 Maven 镜像
-├── keys/aiguide.keystore   ← 签名密钥,务必备份!
-├── release.sh          一键发布(同步版本号 + 构建 + 命名)
-└── build.sh            构建入口
-```
+| 依赖 | 版本 | 说明 |
+| --- | --- | --- |
+| Node.js | ≥ 20 | 见 `package.json` 的 `engines` |
+| JDK | 17 | RN 0.88 / AGP 要求 |
+| Android SDK | Platform 36+、Build-Tools 36+ | Android Studio 的 SDK Manager 装 |
+| NDK | 27.1.12297006 | React Native 要编 C++,版本必须匹配 |
+
+建议装 [Android Studio](https://developer.android.com/studio),它会一并装好 SDK 和 NDK,
+然后把 `ANDROID_HOME` 指向 SDK 目录(macOS 默认 `~/Library/Android/sdk`)。
+
+### 步骤
 
 ```bash
-.toolchain/release.sh 0.0.2
-# 产物:assets/apk/ai-guide-photo-v0.0.2.apk
+# 1. 装依赖
+npm install
+
+# 2. 生成原生工程(android/ 不入库,必须自己生成)
+npx expo prebuild -p android
+
+# 3. 构建 APK
+export ANDROID_HOME="$HOME/Library/Android/sdk"    # Windows: %LOCALAPPDATA%\Android\Sdk
+./scripts/build.sh assembleRelease
+
+# 产物:android/app/build/outputs/apk/release/app-release.apk
+```
+
+`scripts/build.sh` 会自动处理环境变量:优先用你已导出的 `JAVA_HOME` / `ANDROID_HOME`,
+找不到时回退到项目内的 `.toolchain/`(仓库维护者的离线工具链,不入库)。
+
+想连版本号一起管理,用发布脚本:
+
+```bash
+./scripts/release.sh 0.0.2
+# 产出:assets/apk/ai-guide-photo-v0.0.2.apk(并校验 APK 内的版本号)
 ```
 
 **版本号规则**:文件名 `ai-guide-photo-v<主>.<次>.<修>.apk`;
 `versionCode = 主×10000 + 次×100 + 修`(0.0.2 → 2),只增不减。
 
-> ⚠️ `keys/aiguide.keystore` 是 Release 签名密钥。**丢了就没法给已安装的 App 做覆盖升级**
-> (只能卸载重装,用户设置全丢)。
+### 关于签名
+
+`npx expo prebuild` 生成的工程用 **debug 密钥**签名 release 包,**自己装能用,但不能上架、
+也不能给已安装的 App 做覆盖升级**。
+
+要长期分发,自己生成密钥:
+
+```bash
+keytool -genkeypair -v -keystore my-release.keystore \
+  -alias mykey -keyalg RSA -keysize 2048 -validity 10000
+
+# 然后在 android/app/build.gradle 里把 signingConfigs.release 指向它
+```
+
+> ⚠️ 密钥文件**丢了就无法覆盖升级已安装的 App**(只能卸载重装,用户数据全丢)。
+> 不要把它提交进仓库。
+
+### 备选:云端构建(EAS)
+
+没有本地 Android 环境也能出包,但需要一个 Expo 账号:
+
+```bash
+npm i -g eas-cli
+eas login
+eas build -p android --profile preview
+```
+
+### 常见问题
+
+| 现象 | 原因 / 解决 |
+| --- | --- |
+| `android/ 目录不存在` | 没跑 `npx expo prebuild -p android` |
+| `找不到 JDK` | 装 JDK 17 并设置 `JAVA_HOME` |
+| NDK 版本不匹配 | SDK Manager 里装 `27.1.12297006`,或改 `android/build.gradle` 的 `ndkVersion` |
+| 首次构建很慢(10 分钟以上) | 正常,C++ 要为每个原生模块编一遍;之后增量 20 秒~4 分钟 |
+| 内存不足 / OOM | 调大 `android/gradle.properties` 的 `org.gradle.jvmargs`(如 `-Xmx4g`) |
+| 想只编 arm64 减小体积 | `android/gradle.properties` 设 `reactNativeArchitectures=arm64-v8a` |
 
 ---
 

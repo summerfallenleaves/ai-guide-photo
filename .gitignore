@@ -64,3 +64,6 @@ assets/apk/
 # 本地 AI 工具配置(符号链接指向 .agents/,克隆后会断)
 /.claude/
 /skills-lock.json
+
+# 发布日志
+.release.log
