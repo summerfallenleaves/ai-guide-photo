@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  js:
+    name: 类型检查 / lint / 单元测试
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 类型检查
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npx eslint src __tests__ --ext .ts,.tsx
+
+      - name: 单元测试
+        run: npx jest --ci
+
+  # 原生层(Kotlin)不在这里构建:
+  # 需要 Android SDK + NDK,装一次要好几分钟,而且相机行为最终只能真机验证。
+  # 动了 modules/camera2/ 的 PR 请本地跑 scripts/build.sh :aiguide-camera2:test,
+  # 并按 docs/REGRESSION.md 在真机上走一遍。

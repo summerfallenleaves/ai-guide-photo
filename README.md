@@ -7,6 +7,7 @@
 - 纯本地运行:**没有自建服务器**,请求由手机直接发往 DeepSeek
 - 产品定义与决策记录见 [REQUIREMENTS.md](./REQUIREMENTS.md)
 - 给 AI 协作方的工程约定见 [AGENTS.md](./AGENTS.md)
+- 想一起改代码?先看 [CONTRIBUTING.md](./CONTRIBUTING.md)
 
 ---
 
