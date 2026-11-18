@@ -47,11 +47,9 @@ jobs:
       - name: 生成原生工程
         run: |
           npx expo prebuild -p android --no-install
-          # 只保留 arm64:体积减一半以上,C++ 编译也快。
-          # 现代 Android 手机几乎都是 arm64;要兼容老 32 位设备就删掉这行。
-          echo "reactNativeArchitectures=arm64-v8a" >> android/gradle.properties
-          echo "org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m" >> android/gradle.properties
-          echo "android.enableMinifyInReleaseBuilds=false" >> android/gradle.properties
+          # 只编 arm64(体积减一半以上,C++ 也快),并调大堆内存。
+          # 用脚本而不是 echo >>,因为 prebuild 生成的文件末尾没有换行符。
+          ./scripts/ci-tune-gradle.sh android/gradle.properties
 
       - name: 对齐版本号
         run: |
