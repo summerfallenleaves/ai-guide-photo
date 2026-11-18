@@ -52,6 +52,7 @@ checkout → Node 22 → JDK 17 → Android SDK/NDK → npm ci
 ## 二、签名
 
 CI 默认用 **debug 密钥**签名 —— 能安装、能自用,**不能上架,也不能给已安装用户做覆盖升级**。
+首版 `v0.0.1` 的 Release 附件就是这样签的,仅供试用。
 
 要正式签名,在仓库 **Settings → Secrets and variables → Actions** 里配 4 个 secret:
 
@@ -93,7 +94,25 @@ npm test                                # 单元测试
 
 ---
 
-## 四、构建产物里不该有的东西
+## 四、CI 构建的两个坑(都踩过)
+
+**1. `gradle.properties` 末尾没有换行符**
+
+用 `echo "..." >> android/gradle.properties` 追加会把属性拼到最后一行:
+
+```
+expo.camera.barcode-scanner-enabled=falsereactNativeArchitectures=arm64-v8a
+```
+
+结果是 expo-modules-autolinking 报 `SyntaxError: Unexpected non-whitespace character after JSON`。
+**改用 `scripts/ci-tune-gradle.sh`**,它会先补换行再按 key 覆盖(幂等)。
+
+**2. 不限制 ABI 会编出 88MB 的包**
+
+prebuild 默认四种 ABI 全编(armeabi-v7a / arm64-v8a / x86 / x86_64)。
+只留 `arm64-v8a` 后降到 **35MB**,C++ 编译也快一半。
+
+## 五、构建产物里不该有的东西
 
 CI 的构建路径是 `/home/runner/work/...`,不含个人信息,可以放心分发。
 
@@ -112,7 +131,7 @@ unzip -p assets/apk/xxx.apk lib/arm64-v8a/libappmodules.so | strings | grep "/Us
 
 ---
 
-## 五、出问题时
+## 六、出问题时
 
 | 现象 | 排查 |
 | --- | --- |
@@ -124,7 +143,7 @@ unzip -p assets/apk/xxx.apk lib/arm64-v8a/libappmodules.so | strings | grep "/Us
 
 ---
 
-## 六、本地发布脚本做了什么
+## 七、本地发布脚本做了什么
 
 `scripts/release.sh <版本>`:
 
