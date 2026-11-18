@@ -60,9 +60,39 @@
     ],
     "setupFiles": [
       "<rootDir>/jest.setup.ts"
+    ],
+    "collectCoverage": true,
+    "collectCoverageFrom": [
+      "src/lib/**/*.ts",
+      "!src/lib/api.ts"
+    ],
+    "coverageReporters": [
+      "text-summary",
+      "text"
     ]
   },
   "engines": {
     "node": ">=20"
-  }
+  },
+  "description": "AI 摄影助手:取景时实时给出可执行的调整建议,拍后点评并给出可一键应用的拍摄参数。Android + 自研 Camera2 + DeepSeek。",
+  "license": "MIT",
+  "author": "summerfallenleaves",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/summerfallenleaves/ai-guide-photo.git"
+  },
+  "homepage": "https://github.com/summerfallenleaves/ai-guide-photo#readme",
+  "bugs": {
+    "url": "https://github.com/summerfallenleaves/ai-guide-photo/issues"
+  },
+  "keywords": [
+    "expo",
+    "react-native",
+    "android",
+    "camera2",
+    "ai",
+    "deepseek",
+    "photography",
+    "camera"
+  ]
 }

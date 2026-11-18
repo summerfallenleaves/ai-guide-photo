@@ -1,5 +1,12 @@
 # AI 拍照引导
 
+[![CI](https://github.com/summerfallenleaves/ai-guide-photo/actions/workflows/ci.yml/badge.svg)](https://github.com/summerfallenleaves/ai-guide-photo/actions/workflows/ci.yml)
+[![Android](https://github.com/summerfallenleaves/ai-guide-photo/actions/workflows/android.yml/badge.svg)](https://github.com/summerfallenleaves/ai-guide-photo/actions/workflows/android.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/summerfallenleaves/ai-guide-photo)](https://github.com/summerfallenleaves/ai-guide-photo/releases)
+
+**简体中文** | [English](./README.en.md)
+
 举起手机取景时,实时告诉你"该往哪挪、该蹲多低、光在哪边",按下快门后再给一次复盘——
 **而且给出的建议能一键设进相机**。
 
@@ -60,6 +67,8 @@
   —— **纯本地计算,不消耗 API**
 - **设置页**:API Key、快速模式、自动分析开关、分析间隔、参数建议开关、接口地址
 - 断网或没配 Key 时不会白屏,会给出明确文案
+- **不填 API Key 也能用**:相机的全部功能(缩放、对焦、闪光灯、专业参数、定时、音量键快门)
+  都不需要网络,只是没有 AI 建议和点评
 
 ---
 
