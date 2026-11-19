@@ -1,7 +1,7 @@
 
 import * as Haptics from 'expo-haptics';
 import { router, useFocusEffect } from 'expo-router';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { GestureDetector } from 'react-native-gesture-handler';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, AppState, Linking, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -11,18 +11,19 @@ import { GridOverlay } from '@/components/grid-overlay';
 import { AUTO_SELECTION, ProCameraPanel, type ProSelection } from '@/components/pro-camera-panel';
 import { LevelBadge } from '@/components/level-badge';
 import { SuggestionCard } from '@/components/suggestion-card';
+import { useCaptureFlow } from '@/hooks/use-capture-flow';
 import { useLiveAnalysis } from '@/hooks/use-live-analysis';
+import { useShutterTimer } from '@/hooks/use-shutter-timer';
+import { usePreviewGestures } from '@/hooks/use-preview-gestures';
 import { useTilt } from '@/hooks/use-tilt';
+import { takePendingAdjust } from '@/lib/capture-store';
 import { useVoiceGuide } from '@/hooks/use-voice-guide';
-import { analyze } from '@/lib/api';
 import { useApiKey } from '@/hooks/use-api-key';
 import { useCameraPermission } from '@/hooks/use-camera-permission';
 import {
   addErrorListener,
-  focusAt,
   setExposureCompensation,
   setFlashMode,
-  setZoom as setZoomValue,
   formatShutterNs,
   parseShutterToNs,
   setManual,
@@ -32,18 +33,13 @@ import {
   Camera2Preview,
   getCapabilities,
   grabPreview,
-  takePicture,
   type Camera2CapsFull,
   type Camera2Params,
   type FlashMode,
 } from '@/lib/native-camera2';
-import { cropToAspect, toAnalysisBase64 } from '@/lib/analysis-image';
 import type { PhotoMeta } from '@/lib/exif';
 import type { AdjustParams } from '@/lib/types';
-import { setLastCapture, setReviewState, takePendingAdjust } from '@/lib/capture-store';
-import { addHistoryEntry, loadHistory, persistPhoto, updateHistoryEntry } from '@/lib/history';
 import { liveAnalysisEnabled, thinkingOf, useSettings } from '@/lib/settings';
-import { saveToAlbum } from '@/lib/media';
 import { palette, radius, spacing, tabularNums, type, weight } from '@/lib/theme';
 
 /** 预览填充比例,实测调出来的默认值 */
@@ -71,11 +67,6 @@ export default function CameraScreen() {
   const [showGrid, setShowGrid] = useState(true);
   /** 当前变焦倍数(数字变焦) */
   const [zoom, setZoom] = useState(1);
-  const zoomRef = useRef(1);
-  const zoomSentRef = useRef(1);
-  /** 预览区域的实际尺寸,用于把点按位置换算成 0~1 坐标 */
-  const previewSizeRef = useRef({ width: 0, height: 0 });
-  const pinchStartRef = useRef(1);
   /** 点按对焦的位置(屏幕坐标) */
   const [focusPoint, setFocusPoint] = useState<{ x: number; y: number } | null>(null);
   const [flashMode, setFlashModeState] = useState<FlashMode>('off');
@@ -109,15 +100,10 @@ export default function CameraScreen() {
     // 在 effect 里同步,避免渲染期写 ref
     previewRectRef.current = previewRect;
   }, [previewRect]);
-  /** 定时器:0 = 关闭,3 / 10 秒 */
-  const [timerSec, setTimerSec] = useState(0);
-  /** 正在倒计时时显示剩余秒数 */
-  const [countdown, setCountdown] = useState<number | null>(null);
   /** 专业面板是否展开 */
   const [proOpen, setProOpen] = useState(false);
   const [proSelection, setProSelection] = useState<ProSelection>(AUTO_SELECTION);
-  const [capturing, setCapturing] = useState(false);
-
+  
   /** 原生相机实时回报的参数与静态光学信息 */
   const paramsRef = useRef<Camera2Params | null>(null);
   /** 从复盘页带回来、等相机就绪后应用的参数 */
@@ -132,8 +118,6 @@ export default function CameraScreen() {
 
   const captureBusyRef = useRef(false);
 
-  /** 每次拍照自增,用来丢弃"上一张"迟到的点评结果 */
-  const reviewSeq = useRef(0);
   const flash = useMemo(() => new Animated.Value(0), []);
 
   const tilt = useTilt(focused && appActive && ready);
@@ -347,58 +331,12 @@ export default function CameraScreen() {
     return () => sub.remove();
   }, [clearError, resetFailures]);
 
-  /* eslint-disable react-hooks/refs, react-hooks/preserve-manual-memoization --
-     手势回调是在用户操作时执行的,不是渲染期访问 ref。
-     React Compiler 无法建模 Gesture API 的调用时机,这里显式豁免。 */
-  const pinchGesture = useMemo(
-    () =>
-      Gesture.Pinch()
-        .runOnJS(true)
-        .onBegin(() => {
-          pinchStartRef.current = zoomRef.current;
-        })
-        .onUpdate((event) => {
-          const max = capsRef.current?.maxZoom ?? 4;
-          const next = Math.min(max, Math.max(1, pinchStartRef.current * event.scale));
-          if (Math.abs(next - zoomRef.current) > 0.02) {
-            zoomRef.current = next;
-            setZoom(next);
-            if (Math.abs(next - zoomSentRef.current) > 0.05) {
-              zoomSentRef.current = next;
-              setZoomValue(next);
-            }
-          }
-        }),
-    [],
-  );
-
-  const tapGesture = useMemo(
-    () =>
-      Gesture.Tap()
-        .runOnJS(true)
-        .onEnd((event) => {
-          const rect = previewRectRef.current;
-          if (!rect.width || !rect.height) return;
-          const nx = Math.min(1, Math.max(0, (event.x - rect.x) / rect.width));
-          const ny = Math.min(1, Math.max(0, (event.y - rect.y) / rect.height));
-          focusAt(nx, ny);
-          setFocusPoint({ x: event.x, y: event.y });
-          setTimeout(() => setFocusPoint(null), 1200);
-        }),
-    [],
-  );
-
-  const previewGesture = useMemo(
-    () => Gesture.Simultaneous(pinchGesture, tapGesture),
-    [pinchGesture, tapGesture],
-  );
-
-  /* eslint-enable react-hooks/refs, react-hooks/preserve-manual-memoization */
-
-  /** 定时器三态循环:关 → 3s → 10s → 关 */
-  const cycleTimer = useCallback(() => {
-    setTimerSec((prev) => (prev === 0 ? 3 : prev === 3 ? 10 : 0));
-  }, [setTimerSec]);
+  const { previewGesture } = usePreviewGestures({
+    capsRef,
+    rectRef: previewRectRef,
+    onZoomChange: setZoom,
+    onFocusRing: setFocusPoint,
+  });
 
   /** 专业面板的每一档立即生效 */
   const applyProSelection = useCallback((sel: ProSelection) => {
@@ -449,151 +387,31 @@ export default function CameraScreen() {
     retryLive();
   }, [stopVoice, retryLive]);
 
-  const handleCapture = useCallback(async () => {
-    if (!ready || captureBusyRef.current) return;
+  const { capturing, capture } = useCaptureFlow({
+    cameraReady: ready,
+    hasApiKey: keyReady,
+    apiEndpoint: settings.apiEndpoint,
+    thinking: thinkingOf(settings),
+    visibleAspect: () => previewRectRef.current.aspect,
+    meta: currentMeta,
+    limits: () =>
+      capsRef.current
+        ? {
+            isoMin: capsRef.current.isoMin,
+            isoMax: capsRef.current.isoMax,
+            exposureMinNs: capsRef.current.exposureMinNs,
+            exposureMaxNs: capsRef.current.exposureMaxNs,
+          }
+        : undefined,
+    getLastSuggestion: () => lastSuggestionRef.current,
+    onError: reportError,
+    flash,
+  });
 
-    captureBusyRef.current = true;
-    setCapturing(true);
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
-    Animated.sequence([
-      Animated.timing(flash, { toValue: 0.85, duration: 60, useNativeDriver: true }),
-      Animated.timing(flash, { toValue: 0, duration: 240, useNativeDriver: true }),
-    ]).start();
-
-    try {
-      const shot = await takePicture();
-      if (!shot?.path) throw new Error('拍照失败');
-      const rawUri = `file://${shot.path}`;
-      // 预览只显示了取景画面的一部分时,照片也要按同样的比例裁切;
-      // shot.rotation 告诉我们对横向存储的照片该换算哪个坐标轴
-      const shotUri = await cropToAspect(rawUri, previewRectRef.current.aspect, shot.rotation).catch(
-        () => rawUri,
-      );
-
-      // 先直接写相册(Android 13+ 不需要权限),失败才申请
-      const saveResult = await saveToAlbum(shotUri);
-      const saved = saveResult.ok;
-      if (!saved) console.warn('[capture] 保存相册失败:', saveResult.error);
-
-      const photoMeta = currentMeta();
-
-      // 复制一份到文档目录,历史记录和复盘页都用它(cache 会被系统清理)
-      const entryId = String(Date.now());
-      let stableUri = shotUri;
-      try {
-        stableUri = await persistPhoto(shotUri, entryId);
-      } catch {
-        // 复制失败就退回用原路径,不影响这次拍照
-      }
-
-      // 照片先落地:立刻进复盘页,不让用户为了等点评而干站着
-      const lastSuggestion = lastSuggestionRef.current;
-      setLastCapture({ uri: stableUri, saved, meta: photoMeta, lastSuggestion });
-      // 没有 API Key 就不发请求 —— 宁可明说"没有点评",也不要在复盘页转圈到超时
-      setReviewState(
-        keyReady
-          ? { status: 'analyzing' }
-          : { status: 'failed', error: '没有配置 API Key,这张只保存了照片。相机功能不受影响。' },
-      );
-      router.push({
-        pathname: '/review',
-        params: { uri: stableUri, saved: saved ? '1' : '0' },
-      });
-
-      // 点评在后台继续跑,结果推给复盘页
-      const mySeq = ++reviewSeq.current;
-      const photoUri = stableUri;
-
-      await loadHistory();
-      addHistoryEntry({
-        id: entryId,
-        uri: stableUri,
-        createdAt: Date.now(),
-        savedToAlbum: saved,
-        meta: photoMeta,
-        status: 'analyzing',
-      });
-
-      if (!keyReady) {
-        updateHistoryEntry(entryId, { status: 'failed', error: '没有配置 API Key' });
-        return;
-      }
-
-      void (async () => {
-          try {
-            // 只给模型用的一份缩略图,不影响相册和复盘页显示的原图
-            const base64 = await toAnalysisBase64(photoUri, 0, 0);
-            if (mySeq !== reviewSeq.current) return;
-            const result = await analyze(base64, 'capture', {
-              thinking: thinkingOf(settings),
-              endpoint: settings.apiEndpoint,
-              meta: photoMeta,
-              lastLiveSuggestion: lastSuggestion,
-              limits: capsRef.current
-                ? {
-                    isoMin: capsRef.current.isoMin,
-                    isoMax: capsRef.current.isoMax,
-                    exposureMinNs: capsRef.current.exposureMinNs,
-                    exposureMaxNs: capsRef.current.exposureMaxNs,
-                  }
-                : undefined,
-            });
-            if (mySeq !== reviewSeq.current) return; // 已经又拍了一张,丢弃旧结果
-            setReviewState(
-              result.mode === 'capture'
-                ? { status: 'done', result }
-                : { status: 'failed', error: '服务返回了意外类型' },
-            );
-            if (result.mode === 'capture') {
-              updateHistoryEntry(entryId, { status: 'done', result });
-            } else {
-              updateHistoryEntry(entryId, { status: 'failed', error: '服务返回了意外类型' });
-            }
-        } catch (err) {
-          if (mySeq !== reviewSeq.current) return;
-          setReviewState({ status: 'failed', error: (err as Error).message });
-          updateHistoryEntry(entryId, { status: 'failed', error: (err as Error).message });
-        }
-      })();
-    } catch (err) {
-      reportError((err as Error).message);
-    } finally {
-      captureBusyRef.current = false;
-      setCapturing(false);
-    }
-  }, [flash, ready, settings, currentMeta, keyReady, setCapturing, reportError]);
-
-  /** 倒计时进行中:每秒减一,到 0 自动拍 */
-  useEffect(() => {
-    if (countdown === null) return;
-    if (countdown <= 0) {
-      // 放到下一个任务里执行,避免在 effect 里同步 setState
-      const done = setTimeout(() => {
-        setCountdown(null);
-        void handleCapture();
-      }, 0);
-      return () => clearTimeout(done);
-    }
-    const timer = setTimeout(() => setCountdown((v) => (v === null ? null : v - 1)), 1000);
-    return () => clearTimeout(timer);
-  }, [countdown, handleCapture]);
-
-  /** 快门入口:有定时就先倒计时 */
-  const onShutterPress = useCallback(() => {
-    if (countdown !== null) {
-      setCountdown(null);
-      return;
-    }
-    if (timerSec > 0) {
-      setCountdown(timerSec);
-      return;
-    }
-    void handleCapture();
-  }, [countdown, timerSec, setCountdown, handleCapture]);
+  const shutter = useShutterTimer(() => void capture());
 
   // 音量键当快门:订阅随 onShutterPress 更新,避免闭包过期
-  useEffect(() => addVolumeKeyListener(() => onShutterPress()), [onShutterPress]);
+  useEffect(() => addVolumeKeyListener(() => shutter.press()), [shutter]);
 
 
 
@@ -645,15 +463,7 @@ export default function CameraScreen() {
 
       {/* 取景操作层:双指缩放 + 点按对焦 */}
       <GestureDetector gesture={previewGesture}>
-        <View
-          style={StyleSheet.absoluteFill}
-          onLayout={(e) => {
-            previewSizeRef.current = {
-              width: e.nativeEvent.layout.width,
-              height: e.nativeEvent.layout.height,
-            };
-          }}
-        />
+        <View style={StyleSheet.absoluteFill} />
       </GestureDetector>
 
       {/* 对焦框 */}
@@ -665,9 +475,9 @@ export default function CameraScreen() {
       ) : null}
 
       {/* 定时器倒计时 */}
-      {countdown !== null ? (
-        <Pressable style={styles.countdownLayer} onPress={() => setCountdown(null)}>
-          <Text style={styles.countdownText}>{countdown}</Text>
+      {shutter.countdown !== null ? (
+        <Pressable style={styles.countdownLayer} onPress={shutter.cancel}>
+          <Text style={styles.countdownText}>{shutter.countdown}</Text>
           <Text style={styles.countdownHint}>点任意处取消</Text>
         </Pressable>
       ) : null}
@@ -737,9 +547,9 @@ export default function CameraScreen() {
               <Pressable style={styles.sideButton} onPress={() => setProOpen((v) => !v)} hitSlop={10}>
                 <Text style={[styles.sideButtonText, proOpen && { color: palette.accent }]}>专业</Text>
               </Pressable>
-              <Pressable style={styles.sideButton} onPress={cycleTimer} hitSlop={10}>
-                <Text style={[styles.sideButtonText, timerSec > 0 && { color: palette.accent }]}>
-                  {timerSec === 0 ? '定时' : `${timerSec}s`}
+              <Pressable style={styles.sideButton} onPress={shutter.cycle} hitSlop={10}>
+                <Text style={[styles.sideButtonText, shutter.seconds > 0 && { color: palette.accent }]}>
+                  {shutter.seconds === 0 ? '定时' : `${shutter.seconds}s`}
                 </Text>
               </Pressable>
             </View>
@@ -750,7 +560,7 @@ export default function CameraScreen() {
                 readyToShoot && styles.shutterReady,
                 capturing && { opacity: 0.6 },
               ]}
-              onPress={onShutterPress}
+              onPress={shutter.press}
               disabled={capturing || !ready}>
               <View style={styles.shutterInner} />
             </Pressable>

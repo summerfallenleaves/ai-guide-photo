@@ -74,7 +74,23 @@ Expo 每个 SDK 版本都有破坏性改动,记忆里的 API 很可能已经改�
 - **文字层级**:标题 19/700 → 正文 15/500 → 说明 12.5/400(灰 `rgba(255,255,255,0.58)`)
 - 颜色与圆角统一放在 `src/lib/theme.ts`,**不要在组件里写死色值**
 
-### 3.2 相机页 `src/app/index.tsx`
+### 3.2 相机页 `src/app/index.tsx`(只负责组合与布局)
+
+页面曾经是 1115 行、21 个 state + 20 个 ref 平铺在一个作用域里,所有相机 bug 都出在这里。
+现在按职责拆成 5 个 hook + 1 个纯函数模块:
+
+| 文件 | 职责 |
+| --- | --- |
+| `src/lib/live-analysis-policy.ts` | **纯函数**:这一轮能不能跑、失败怎么计数、间隔取多少。有单测 |
+| `hooks/use-live-analysis.ts` | 分析循环:抓帧、调模型、失败暂停、定时器 |
+| `hooks/use-voice-guide.ts` | 播报 + 播报期间冻结建议 |
+| `hooks/use-capture-flow.ts` | 拍照 → 裁切 → 存相册 → 进复盘 → 后台点评 |
+| `hooks/use-shutter-timer.ts` | 定时快门(关/3s/10s + 倒计时) |
+| `hooks/use-preview-gestures.ts` | 捏合缩放 + 点按对焦(唯一需要 React Compiler 豁免的地方) |
+
+**约定**:新逻辑优先放进对应的 hook 或纯函数;页面只做组合和布局。
+判断类逻辑先写成纯函数(可以单测),再让 hook 调它。
+
 
 竖屏(唯一形态):
 
