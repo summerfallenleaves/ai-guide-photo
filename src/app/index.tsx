@@ -818,7 +818,8 @@ export default function CameraScreen() {
               <Text style={styles.appliedText}>{appliedNote}</Text>
             </View>
           ) : null}
-          {keyReady ? (
+          {/* 专业面板是半透明的,压在卡片上方会把两层文字叠在一起,所以展开时先收起卡片 */}
+          {keyReady && !proOpen ? (
             <SuggestionCard
               suggestion={suggestion}
               analyzing={analyzing}
