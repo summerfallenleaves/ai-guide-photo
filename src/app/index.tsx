@@ -20,25 +20,8 @@ import { takePendingAdjust } from '@/lib/capture-store';
 import { useVoiceGuide } from '@/hooks/use-voice-guide';
 import { useApiKey } from '@/hooks/use-api-key';
 import { useCameraPermission } from '@/hooks/use-camera-permission';
-import {
-  addErrorListener,
-  setExposureCompensation,
-  setFlashMode,
-  formatShutterNs,
-  parseShutterToNs,
-  setManual,
-  addParamsListener,
-  addReadyListener,
-  addVolumeKeyListener,
-  Camera2Preview,
-  getCapabilities,
-  grabPreview,
-  type Camera2CapsFull,
-  type Camera2Params,
-  type FlashMode,
-} from '@/lib/native-camera2';
-import type { PhotoMeta } from '@/lib/exif';
-import type { AdjustParams } from '@/lib/types';
+import { useCameraSession } from '@/hooks/use-camera-session';
+import { Camera2Preview, formatShutterNs } from '@/lib/native-camera2';
 import { liveAnalysisEnabled, thinkingOf, useSettings } from '@/lib/settings';
 import { palette, radius, spacing, tabularNums, type, weight } from '@/lib/theme';
 
@@ -52,7 +35,6 @@ export default function CameraScreen() {
   const liveOn = liveAnalysisEnabled(settings);
 
   const [facing, setFacing] = useState<'back' | 'front'>('back');
-  const [ready, setReady] = useState(false);
   const [focused, setFocused] = useState(true);
   /**
    * App 是否在前台。退到后台时系统会禁掉相机(ERROR_CAMERA_DISABLED=3),
@@ -69,16 +51,57 @@ export default function CameraScreen() {
   const [zoom, setZoom] = useState(1);
   /** 点按对焦的位置(屏幕坐标) */
   const [focusPoint, setFocusPoint] = useState<{ x: number; y: number } | null>(null);
-  const [flashMode, setFlashModeState] = useState<FlashMode>('off');
   const { width: screenW, height: screenH } = useWindowDimensions();
-  /** 相机硬件能力(最大变焦、闪光灯、曝光补偿范围) */
-  const [caps, setCaps] = useState<Camera2CapsFull | null>(null);
+
+  /** 专业面板是否展开 */
+  const [proOpen, setProOpen] = useState(false);
+  const [proSelection, setProSelection] = useState<ProSelection>(AUTO_SELECTION);
+  
+  const captureBusyRef = useRef(false);
+
+  const flash = useMemo(() => new Animated.Value(0), []);
+
+  /** 相机错误单独存:它和 AI 错误共用一个提示位置,但来源不同 */
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const reportCameraError = useCallback(
+    (message: string) => setCameraError(message || null),
+    [setCameraError],
+  );
+
+  /** 相机会话:JS 与原生之间的唯一通道(订阅事件、缓存能力、下发参数) */
+  const session = useCameraSession({
+    paramAdvice: settings.paramAdvice,
+    isAppActive: () => appActiveRef.current,
+    onError: reportCameraError,
+    onReady: () => reportCameraError(''),
+    onShutterKey: () => {},
+  });
+
+  const markNotReady = session.markNotReady;
+  const tilt = useTilt(focused && appActive && session.ready);
+
+  useFocusEffect(
+    useCallback(() => {
+      setFocused(true);
+      const incoming = takePendingAdjust();
+      if (incoming) {
+        // 相机可能是刚挂载,排队等就绪事件再应用
+        session.queueAdjust(incoming);
+      }
+      return () => {
+        // 离开页面立刻释放相机,避免和别的页面抢
+        setFocused(false);
+        markNotReady();
+      };
+    }, [session, markNotReady]),
+  );
 
   /**
    * 取景区域:相机画面按 contain 显示后,屏幕上被画面占据的那块矩形。
    * 网格线和点按对焦都要以这块为准,否则会和照片对不上。
    */
-  const previewAspect = caps?.previewAspect && caps.previewAspect > 0 ? caps.previewAspect : 3 / 4;
+  const previewAspect =
+    session.caps?.previewAspect && session.caps.previewAspect > 0 ? session.caps.previewAspect : 3 / 4;
   /** 临时:预览填充比例,0=完整显示留黑边,1=铺满裁切 */
   // 预览填充比例:0 = 完整显示(黑边),1 = 铺满(裁切)。
   // 0.25 是真机上手调出来的值 —— 画面足够满,又不会裁掉太多。
@@ -100,124 +123,6 @@ export default function CameraScreen() {
     // 在 effect 里同步,避免渲染期写 ref
     previewRectRef.current = previewRect;
   }, [previewRect]);
-  /** 专业面板是否展开 */
-  const [proOpen, setProOpen] = useState(false);
-  const [proSelection, setProSelection] = useState<ProSelection>(AUTO_SELECTION);
-  
-  /** 原生相机实时回报的参数与静态光学信息 */
-  const paramsRef = useRef<Camera2Params | null>(null);
-  /** 从复盘页带回来、等相机就绪后应用的参数 */
-  const pendingAdjustRef = useRef<AdjustParams | null>(null);
-  const [appliedNote, setAppliedNote] = useState<string | null>(null);
-  /** 相机实时回报的参数,用于顶栏显示 */
-  const [liveParams, setLiveParams] = useState<Camera2Params | null>(null);
-  /** 临时诊断:预览变换现场数据 */
-
-
-  const capsRef = useRef<Camera2CapsFull | null>(null);
-
-  const captureBusyRef = useRef(false);
-
-  const flash = useMemo(() => new Animated.Value(0), []);
-
-  const tilt = useTilt(focused && appActive && ready);
-  /** 把 AI 建议的参数合并进当前状态并下发给相机 */
-  const applyAdjust = useCallback((adj: AdjustParams) => {
-    const cur = paramsRef.current;
-    const caps = capsRef.current;
-    const wantsExposure = adj.iso != null || !!adj.shutter;
-
-    let iso: number | null;
-    let exposureNs: number | null;
-    if (wantsExposure) {
-      iso = adj.iso ?? (cur?.manual ? cur.iso : null);
-      exposureNs = adj.shutter
-        ? parseShutterToNs(adj.shutter) ?? null
-        : cur?.manual
-          ? cur.exposureNs
-          : null;
-      if (iso == null || exposureNs == null) {
-        iso = null;
-        exposureNs = null;
-      }
-    } else if (cur?.manual) {
-      iso = cur.iso;
-      exposureNs = cur.exposureNs;
-    } else {
-      iso = null;
-      exposureNs = null;
-    }
-
-    if (caps) {
-      if (iso != null) iso = Math.min(caps.isoMax, Math.max(caps.isoMin, iso));
-      if (exposureNs != null) {
-        exposureNs = Math.min(caps.exposureMaxNs, Math.max(caps.exposureMinNs, exposureNs));
-      }
-    }
-
-    const kelvin = adj.wb ?? (cur?.kelvin ? cur.kelvin : null);
-    const focusDiopters = adj.focusMeters ? 1 / adj.focusMeters : (cur?.focusDiopters || null);
-
-    setManual({ iso, exposureNs, kelvin, focusDiopters });
-
-    const parts: string[] = [];
-    if (iso) parts.push(`ISO ${iso}`);
-    if (exposureNs) parts.push(formatShutterNs(exposureNs));
-    if (kelvin) parts.push(`${kelvin}K`);
-    setAppliedNote(parts.length ? `已应用 ${parts.join(' · ')}` : '已应用建议参数');
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      setFocused(true);
-      const incoming = takePendingAdjust();
-      if (incoming) {
-        // 相机可能是刚挂载,等就绪事件再应用
-        pendingAdjustRef.current = incoming;
-      }
-      return () => {
-        // 离开页面立刻释放相机,避免和别的页面抢
-        setFocused(false);
-        setReady(false);
-      };
-    }, []),
-  );
-
-
-  /** 把原生回报的参数拼成送模型的 meta */
-  const currentMeta = useCallback((): PhotoMeta | null => {
-    if (!settings.paramAdvice) return null;
-    const p = paramsRef.current;
-    const caps = capsRef.current;
-    if (!p && !caps) return null;
-    return {
-      iso: p?.iso && p.iso > 0 ? p.iso : undefined,
-      exposureTime: p?.exposureNs ? p.exposureNs / 1e9 : undefined,
-      fNumber: caps?.aperture && caps.aperture > 0 ? caps.aperture : undefined,
-      focalLength: caps?.focalLengthMm && caps.focalLengthMm > 0 ? caps.focalLengthMm : undefined,
-    };
-  }, [settings.paramAdvice]);
-
-  useEffect(() => {
-    if (!appliedNote) return;
-    const timer = setTimeout(() => setAppliedNote(null), 4000);
-    return () => clearTimeout(timer);
-  }, [appliedNote]);
-
-  /** 抓帧:相机刚恢复的前几百毫秒可能还没有画面,重试几次再算失败 */
-  const grabWithRetry = useCallback(async (): Promise<string> => {
-    let lastError: unknown;
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      try {
-        return await grabPreview(1024, 60);
-      } catch (err) {
-        lastError = err;
-        await new Promise((resolve) => setTimeout(resolve, 250));
-      }
-    }
-    throw lastError instanceof Error ? lastError : new Error('抓帧失败');
-  }, []);
-
   /**
    * 语音正在播报的标志。
    * 由页面持有、两个 hook 共用:分析循环据此跳过这一轮,语音 hook 负责置位。
@@ -227,7 +132,7 @@ export default function CameraScreen() {
 
   const live = useLiveAnalysis({
     liveOn,
-    cameraReady: ready,
+    cameraReady: session.ready,
     hasApiKey: keyReady,
     hasPermission: permission.granted,
     focused,
@@ -235,15 +140,15 @@ export default function CameraScreen() {
     intervalSec: settings.intervalSec,
     voiceGuide: settings.voiceGuide,
     apiEndpoint: settings.apiEndpoint,
-    grab: grabWithRetry,
-    meta: currentMeta,
+    grab: session.grab,
+    meta: session.meta,
     limits: () =>
-      capsRef.current
+      session.caps
         ? {
-            isoMin: capsRef.current.isoMin,
-            isoMax: capsRef.current.isoMax,
-            exposureMinNs: capsRef.current.exposureMinNs,
-            exposureMaxNs: capsRef.current.exposureMaxNs,
+            isoMin: session.caps.isoMin,
+            isoMax: session.caps.isoMax,
+            exposureMinNs: session.caps.exposureMinNs,
+            exposureMaxNs: session.caps.exposureMaxNs,
           }
         : undefined,
     // 播报中、拍照中都不抓帧:前者会打断语音,后者会和快门抢相机
@@ -273,6 +178,9 @@ export default function CameraScreen() {
         : null;
   }, [live.suggestion]);
 
+  /** 相机错误优先显示;没有就用 AI 的错误 */
+  const errorText = cameraError ?? live.error;
+
   /**
    * 当前画面是否可以拍了。
    * **纯提示**:出错、暂停、没有建议时都是 false,但快门永远可用。
@@ -280,40 +188,10 @@ export default function CameraScreen() {
   const readyToShoot =
     liveOn &&
     !live.paused &&
-    !live.error &&
+    !errorText &&
     live.suggestion?.mode === 'live' &&
     live.suggestion.readyToShoot === true;
 
-  useEffect(() => {
-    const offReady = addReadyListener(() => {
-      setReady(true);
-      clearError();
-      const pending = pendingAdjustRef.current;
-      if (pending) {
-        pendingAdjustRef.current = null;
-        applyAdjust(pending);
-      }
-      void getCapabilities().then((result) => {
-        if (result) {
-          capsRef.current = result;
-          setCaps(result);
-        }
-      });
-    });
-    const offParams = addParamsListener((p) => {
-      paramsRef.current = p;
-      setLiveParams(p);
-    });
-    const offError = addErrorListener((msg) => {
-      // 后台期间相机被系统断开是正常现象,不要留成红字
-      if (appActiveRef.current) reportError(msg);
-    });
-    return () => {
-      offReady();
-      offParams();
-      offError();
-    };
-  }, [applyAdjust, clearError, reportError]);
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
@@ -325,14 +203,14 @@ export default function CameraScreen() {
         clearError();
         resetFailures();
       } else {
-        setReady(false);
+        markNotReady();
       }
     });
     return () => sub.remove();
-  }, [clearError, resetFailures]);
+  }, [clearError, resetFailures, markNotReady]);
 
   const { previewGesture } = usePreviewGestures({
-    capsRef,
+    getCaps: () => session.caps,
     rectRef: previewRectRef,
     onZoomChange: setZoom,
     onFocusRing: setFocusPoint,
@@ -341,25 +219,9 @@ export default function CameraScreen() {
   /** 专业面板的每一档立即生效 */
   const applyProSelection = useCallback((sel: ProSelection) => {
     setProSelection(sel);
-    setExposureCompensation(sel.ev ?? 0);
+    session.applyProSelection(sel);
 
-    // 手动曝光要求 ISO 与快门同时有值;只选了一个就用当前实测值补齐
-    let iso = sel.iso;
-    let shutterNs = sel.shutterNs;
-    if (iso != null && shutterNs == null) {
-      shutterNs = Math.round(paramsRef.current?.exposureNs ?? 0) || null;
-    }
-    if (shutterNs != null && iso == null) {
-      iso = paramsRef.current?.iso ?? null;
-    }
-
-    setManual({
-      iso,
-      exposureNs: shutterNs,
-      focusDiopters: sel.focusDiopters,
-      kelvin: sel.kelvin,
-    });
-  }, [setProSelection]);
+  }, [setProSelection, session]);
 
   // 变成"可以拍了"时轻震一次,提示用户现在按快门
   const wasReadyRef = useRef(false);
@@ -370,15 +232,6 @@ export default function CameraScreen() {
     wasReadyRef.current = readyToShoot;
   }, [readyToShoot]);
 
-  /** 闪光灯三态循环 */
-  const cycleFlash = useCallback(() => {
-    setFlashModeState((prev) => {
-      const next: FlashMode = prev === 'off' ? 'auto' : prev === 'auto' ? 'torch' : 'off';
-      setFlashMode(next);
-      return next;
-    });
-  }, [setFlashModeState]);
-
   // 手动重试:清掉暂停状态并立刻跑一次。用 ref 拿到最新实现,避免每次渲染都换函数
   const stopVoice = voice.stop;
   const retryNow = useCallback(() => {
@@ -388,19 +241,19 @@ export default function CameraScreen() {
   }, [stopVoice, retryLive]);
 
   const { capturing, capture } = useCaptureFlow({
-    cameraReady: ready,
+    cameraReady: session.ready,
     hasApiKey: keyReady,
     apiEndpoint: settings.apiEndpoint,
     thinking: thinkingOf(settings),
     visibleAspect: () => previewRectRef.current.aspect,
-    meta: currentMeta,
+    meta: session.meta,
     limits: () =>
-      capsRef.current
+      session.caps
         ? {
-            isoMin: capsRef.current.isoMin,
-            isoMax: capsRef.current.isoMax,
-            exposureMinNs: capsRef.current.exposureMinNs,
-            exposureMaxNs: capsRef.current.exposureMaxNs,
+            isoMin: session.caps.isoMin,
+            isoMax: session.caps.isoMax,
+            exposureMinNs: session.caps.exposureMinNs,
+            exposureMaxNs: session.caps.exposureMaxNs,
           }
         : undefined,
     getLastSuggestion: () => lastSuggestionRef.current,
@@ -409,12 +262,6 @@ export default function CameraScreen() {
   });
 
   const shutter = useShutterTimer(() => void capture());
-
-  // 音量键当快门:订阅随 onShutterPress 更新,避免闭包过期
-  useEffect(() => addVolumeKeyListener(() => shutter.press()), [shutter]);
-
-
-
 
   if (!permission.checked) {
     return (
@@ -497,8 +344,8 @@ export default function CameraScreen() {
           <View style={styles.brand}>
             <Text style={styles.brandText}>AI 拍照引导</Text>
             <Text style={styles.brandSub} numberOfLines={1}>
-              {liveParams
-                ? `ISO ${liveParams.iso} · ${formatShutterNs(liveParams.exposureNs)}${liveParams.manual ? ' · 手动' : ''}`
+              {session.liveParams
+                ? `ISO ${session.liveParams.iso} · ${formatShutterNs(session.liveParams.exposureNs)}${session.liveParams.manual ? ' · 手动' : ''}`
                 : '正在读取相机参数…'}
             </Text>
           </View>
@@ -506,7 +353,9 @@ export default function CameraScreen() {
             <Pressable style={styles.topChip} onPress={() => setShowGrid((v) => !v)} hitSlop={8}>
               <Text style={[styles.topChipText, showGrid && styles.topChipTextOn]}>网格</Text>
             </Pressable>
-            {caps?.hasFlash ? <FlashButton mode={flashMode} onPress={cycleFlash} /> : null}
+            {session.caps?.hasFlash ? (
+              <FlashButton mode={session.flashMode} onPress={session.cycleFlash} />
+            ) : null}
             <LevelBadge tilt={tilt} />
             <Pressable style={styles.topChip} onPress={() => router.push('/settings')} hitSlop={8}>
               <Text style={styles.topChipText}>设置</Text>
@@ -524,9 +373,9 @@ export default function CameraScreen() {
         ) : null}
 
         <View style={styles.bottomBlock} pointerEvents="box-none">
-          {appliedNote ? (
+          {session.appliedNote ? (
             <View style={styles.appliedPill}>
-              <Text style={styles.appliedText}>{appliedNote}</Text>
+              <Text style={styles.appliedText}>{session.appliedNote}</Text>
             </View>
           ) : null}
           {/* 专业面板是半透明的,压在卡片上方会把两层文字叠在一起,所以展开时先收起卡片 */}
@@ -534,7 +383,7 @@ export default function CameraScreen() {
             <SuggestionCard
               suggestion={live.suggestion}
               analyzing={live.analyzing}
-              error={live.error}
+              error={errorText}
               liveOn={liveOn}
               paused={live.paused}
               onOpenSettings={() => router.push('/settings')}
@@ -561,7 +410,7 @@ export default function CameraScreen() {
                 capturing && { opacity: 0.6 },
               ]}
               onPress={shutter.press}
-              disabled={capturing || !ready}>
+              disabled={capturing || !session.ready}>
               <View style={styles.shutterInner} />
             </Pressable>
 
@@ -575,8 +424,8 @@ export default function CameraScreen() {
 
           <ProCameraPanel
             visible={proOpen}
-            caps={caps}
-            liveParams={liveParams}
+            caps={session.caps}
+            liveParams={session.liveParams}
             selection={proSelection}
             onChange={applyProSelection}
             onClose={() => setProOpen(false)}

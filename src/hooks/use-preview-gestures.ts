@@ -7,8 +7,8 @@ import { focusAt, setZoom as setZoomNative, type Camera2CapsFull } from '@/lib/n
 const FOCUS_RING_MS = 1200;
 
 export type PreviewGesturesDeps = {
-  /** 相机硬件能力(读最大变焦倍数) */
-  capsRef: { current: Camera2CapsFull | null };
+  /** 读相机硬件能力(最大变焦倍数) */
+  getCaps: () => Camera2CapsFull | null;
   /** 取景矩形:点按坐标要按它归一化,否则有黑边时会偏 */
   rectRef: { current: { x: number; y: number; width: number; height: number } };
   onZoomChange: (zoom: number) => void;
@@ -23,7 +23,7 @@ export type PreviewGesturesDeps = {
  * 隔离到自己的模块后,豁免范围收窄到这一个文件。
  */
 export function usePreviewGestures(deps: PreviewGesturesDeps) {
-  const { capsRef, rectRef, onZoomChange, onFocusRing } = deps;
+  const { getCaps, rectRef, onZoomChange, onFocusRing } = deps;
 
   const zoomRef = useRef(1);
   const pinchedFromRef = useRef(1);
@@ -40,7 +40,7 @@ export function usePreviewGestures(deps: PreviewGesturesDeps) {
           pinchedFromRef.current = zoomRef.current;
         })
         .onUpdate((event) => {
-          const max = capsRef.current?.maxZoom ?? 4;
+          const max = getCaps()?.maxZoom ?? 4;
           const next = Math.min(max, Math.max(1, pinchedFromRef.current * event.scale));
           if (Math.abs(next - zoomRef.current) <= 0.02) return;
           zoomRef.current = next;
@@ -51,7 +51,7 @@ export function usePreviewGestures(deps: PreviewGesturesDeps) {
             setZoomNative(next);
           }
         }),
-    [capsRef, onZoomChange],
+    [getCaps, onZoomChange],
   );
 
   const tap = useMemo(

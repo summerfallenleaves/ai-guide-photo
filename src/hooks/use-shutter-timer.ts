@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
+import { addVolumeKeyListener } from '@/lib/native-camera2';
+
 export type ShutterTimer = {
   /** 定时器档位:0 = 关闭,3 / 10 秒 */
   seconds: number;
@@ -59,6 +61,9 @@ export function useShutterTimer(onFire: () => void): ShutterTimer {
     const timer = setTimeout(() => setCountdown((value) => (value === null ? null : value - 1)), 1000);
     return () => clearTimeout(timer);
   }, [countdown, onFire]);
+
+  // 音量键当快门:握持更稳,和屏幕快门走同一条路径(含定时器)
+  useEffect(() => addVolumeKeyListener(() => press()), [press]);
 
   return { seconds, countdown, cycle, press, cancel };
 }
