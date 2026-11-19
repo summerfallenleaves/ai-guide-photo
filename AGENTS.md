@@ -1,6 +1,7 @@
 # AI 拍照引导 · 项目说明
 
 > 本文件是给 **AI 协作方**看的项目约定与历史经验。面向人类的快速上手请看 [README.md](./README.md),
+> 分层与数据流图见 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md),
 > 产品需求与决策记录请看 [REQUIREMENTS.md](./REQUIREMENTS.md)。
 
 ---

@@ -110,6 +110,8 @@ Camera metadata (ISO, shutter, focus distance) is reported live from `TotalCaptu
 static optics from `getCapabilities()`. It is used three ways: injected into the prompt, shown in
 the camera header, and shown on the review page.
 
+Layering and data-flow diagrams (Mermaid): see [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) (Chinese).
+
 ## Build from source
 
 ### Requirements

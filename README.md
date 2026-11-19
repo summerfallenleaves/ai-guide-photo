@@ -128,17 +128,17 @@ docs/REGRESSION.md        真机回归清单
 
 ## 架构
 
-### 没有后端
-
 ```
 手机 App ──HTTPS──▶ api.deepseek.com
    │
    └─ API Key 加密存在手机本地(SecureStore)
 ```
 
-- Key **不在安装包里**,首次打开到设置里填一次
-- 只存在设备加密存储,只出现在请求头里
+- **没有自建服务器**:Key 在手机上,请求直连 DeepSeek
 - 想换成自己的服务:设置页的「接口地址」填上去即可
+- 相机是项目内自研的 Camera2 模块(`modules/camera2/`,Kotlin),不是 expo-camera
+
+分层、时序图、状态归属见 **[docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)**。
 
 ### 相机参数从哪来
 
