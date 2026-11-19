@@ -17,13 +17,21 @@ camera settings with one tap**.
 - Android only. iOS untested, HarmonyOS NEXT unsupported
 
 <p align="center">
-  <img src="docs/screenshots/review.jpg" width="240" alt="Post-shot review: score, what worked, improvements, one-tap settings" />
-  &nbsp;&nbsp;
-  <img src="docs/screenshots/settings.jpg" width="240" alt="Settings: API key, fast mode, auto analysis, voice guide" />
+  <img src="docs/screenshots/main.jpg" width="230" alt="Camera screen: live suggestion, rule-of-thirds grid, level, zoom factor" />
+  &nbsp;
+  <img src="docs/screenshots/review.jpg" width="230" alt="Post-shot review: score, what worked, improvements, one-tap settings" />
+  &nbsp;
+  <img src="docs/screenshots/review-strict.jpg" width="230" alt="Strict review: 42 points with three concrete fixes" />
 </p>
 
 <p align="center">
-  <sub>Left: post-shot review &nbsp;·&nbsp; Right: settings</sub>
+  <img src="docs/screenshots/history.jpg" width="230" alt="Photo history: average score, 7-day trend, verdict split, weakest dimension" />
+  &nbsp;
+  <img src="docs/screenshots/settings.jpg" width="230" alt="Settings: API key, fast mode, auto analysis, voice guide" />
+</p>
+
+<p align="center">
+  <sub>Camera → review → strict review · growth stats · settings</sub>
 </p>
 
 ## What it does

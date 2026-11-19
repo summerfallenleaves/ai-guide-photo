@@ -18,6 +18,24 @@
 - 发现安全问题请走私密通道,见 [SECURITY.md](./SECURITY.md)
 - 发版流程见 [RELEASING.md](./RELEASING.md)
 
+<p align="center">
+  <img src="docs/screenshots/main.jpg" width="230" alt="取景页:实时建议、三分线、水平仪、变焦倍率" />
+  &nbsp;
+  <img src="docs/screenshots/review.jpg" width="230" alt="拍后点评:评分、做得好的地方、改进项、可一键应用的参数" />
+  &nbsp;
+  <img src="docs/screenshots/review-strict.jpg" width="230" alt="严格评审:42 分,给出 3 条具体改进" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/history.jpg" width="230" alt="拍照历史:平均分、7 天趋势、结论分布、最常需要改的维度" />
+  &nbsp;
+  <img src="docs/screenshots/settings.jpg" width="230" alt="设置:API Key、快速模式、自动分析、语音播报" />
+</p>
+
+<p align="center">
+  <sub>取景 → 点评 → 复盘 · 严格评审 · 成长统计 · 设置</sub>
+</p>
+
 ---
 
 ## 现在能做什么
