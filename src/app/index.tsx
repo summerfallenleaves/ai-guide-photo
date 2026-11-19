@@ -1,6 +1,5 @@
 
 import * as Haptics from 'expo-haptics';
-import * as Speech from 'expo-speech';
 import { router, useFocusEffect } from 'expo-router';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -12,7 +11,9 @@ import { GridOverlay } from '@/components/grid-overlay';
 import { AUTO_SELECTION, ProCameraPanel, type ProSelection } from '@/components/pro-camera-panel';
 import { LevelBadge } from '@/components/level-badge';
 import { SuggestionCard } from '@/components/suggestion-card';
+import { useLiveAnalysis } from '@/hooks/use-live-analysis';
 import { useTilt } from '@/hooks/use-tilt';
+import { useVoiceGuide } from '@/hooks/use-voice-guide';
 import { analyze } from '@/lib/api';
 import { useApiKey } from '@/hooks/use-api-key';
 import { useCameraPermission } from '@/hooks/use-camera-permission';
@@ -38,20 +39,15 @@ import {
 } from '@/lib/native-camera2';
 import { cropToAspect, toAnalysisBase64 } from '@/lib/analysis-image';
 import type { PhotoMeta } from '@/lib/exif';
-import type { AdjustParams, LiveSuggestion } from '@/lib/types';
+import type { AdjustParams } from '@/lib/types';
 import { setLastCapture, setReviewState, takePendingAdjust } from '@/lib/capture-store';
 import { addHistoryEntry, loadHistory, persistPhoto, updateHistoryEntry } from '@/lib/history';
 import { liveAnalysisEnabled, thinkingOf, useSettings } from '@/lib/settings';
 import { saveToAlbum } from '@/lib/media';
 import { palette, radius, spacing, tabularNums, type, weight } from '@/lib/theme';
 
-const MAX_CONSECUTIVE_FAILURES = 3;
 /** 预览填充比例,实测调出来的默认值 */
 const DEFAULT_PREVIEW_FILL = 0.25;
-/** 语音模式下两次分析的最小间隔:防止 TTS 秒回/失败导致连续轰炸接口 */
-const VOICE_MIN_ANALYZE_GAP_MS = 1500;
-/** 语音模式下定时器的兜底周期(真正的节奏由播报驱动) */
-const VOICE_FALLBACK_TICK_MS = 10000;
 
 export default function CameraScreen() {
   const permission = useCameraPermission();
@@ -120,29 +116,6 @@ export default function CameraScreen() {
   /** 专业面板是否展开 */
   const [proOpen, setProOpen] = useState(false);
   const [proSelection, setProSelection] = useState<ProSelection>(AUTO_SELECTION);
-  /** 连续失败后暂停自动分析,直到用户手动重试(不改用户设置) */
-  const [paused, setPaused] = useState(false);
-
-  const [suggestion, setSuggestion] = useState<LiveSuggestion | null>(null);
-  const [analyzing, setAnalyzing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // 快门前的建议要带给点评,用 ref 保存以免闭包过期
-  const lastSuggestionRef = useRef<{ headline: string; action: string } | null>(null);
-  useEffect(() => {
-    lastSuggestionRef.current =
-      suggestion && suggestion.mode === 'live'
-        ? { headline: suggestion.headline, action: suggestion.action }
-        : null;
-  }, [suggestion]);
-
-  /**
-   * 当前画面是否可以拍了。
-   * **纯提示**:出错、暂停、没有建议时都是 false,但快门永远可用。
-   */
-  const readyToShoot =
-    liveOn && !paused && !error && suggestion?.mode === 'live' && suggestion.readyToShoot === true;
-
   const [capturing, setCapturing] = useState(false);
 
   /** 原生相机实时回报的参数与静态光学信息 */
@@ -157,25 +130,8 @@ export default function CameraScreen() {
 
   const capsRef = useRef<Camera2CapsFull | null>(null);
 
-  const analyzeBusyRef = useRef(false);
   const captureBusyRef = useRef(false);
-  const failuresRef = useRef(0);
 
-  useEffect(() => {
-    const sub = AppState.addEventListener('change', (state) => {
-      const active = state === 'active';
-      appActiveRef.current = active;
-      setAppActive(active);
-      if (active) {
-        // 回来时清掉后台期间遗留的错误:那多半是挂起/超时造成的假故障
-        setError(null);
-        failuresRef.current = 0;
-      } else {
-        setReady(false);
-      }
-    });
-    return () => sub.remove();
-  }, []);
   /** 每次拍照自增,用来丢弃"上一张"迟到的点评结果 */
   const reviewSeq = useRef(0);
   const flash = useMemo(() => new Animated.Value(0), []);
@@ -243,36 +199,6 @@ export default function CameraScreen() {
     }, []),
   );
 
-  useEffect(() => {
-    const offReady = addReadyListener(() => {
-      setReady(true);
-      setError(null);
-      const pending = pendingAdjustRef.current;
-      if (pending) {
-        pendingAdjustRef.current = null;
-        applyAdjust(pending);
-      }
-      void getCapabilities().then((result) => {
-        if (result) {
-          capsRef.current = result;
-          setCaps(result);
-        }
-      });
-    });
-    const offParams = addParamsListener((p) => {
-      paramsRef.current = p;
-      setLiveParams(p);
-    });
-    const offError = addErrorListener((msg) => {
-      // 后台期间相机被系统断开是正常现象,不要留成红字
-      if (appActiveRef.current) setError(msg);
-    });
-    return () => {
-      offReady();
-      offParams();
-      offError();
-    };
-  }, [applyAdjust]);
 
   /** 把原生回报的参数拼成送模型的 meta */
   const currentMeta = useCallback((): PhotoMeta | null => {
@@ -309,75 +235,117 @@ export default function CameraScreen() {
   }, []);
 
   /**
-   * 正在语音播报。
-   * 播报期间**冻结取景建议**:不发新请求、不换文字。
-   * 否则 3 秒一轮的建议会在语音说到一半时把内容顶掉,
-   * 用户听到的和看到的还不一样。
+   * 语音正在播报的标志。
+   * 由页面持有、两个 hook 共用:分析循环据此跳过这一轮,语音 hook 负责置位。
+   * 用共享 ref 而不是互相 import,避免两个 hook 循环依赖。
    */
-  const speakingRef = useRef(false);
-  const speakingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastAnalyzeAtRef = useRef(0);
-  const followUpRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const voiceSpeakingRef = useRef(false);
 
-  const stopSpeaking = useCallback(() => {
-    speakingRef.current = false;
-    if (followUpRef.current) {
-      clearTimeout(followUpRef.current);
-      followUpRef.current = null;
-    }
-    if (speakingTimerRef.current) {
-      clearTimeout(speakingTimerRef.current);
-      speakingTimerRef.current = null;
-    }
-    void Speech.stop();
-  }, []);
+  const live = useLiveAnalysis({
+    liveOn,
+    cameraReady: ready,
+    hasApiKey: keyReady,
+    hasPermission: permission.granted,
+    focused,
+    appActive,
+    intervalSec: settings.intervalSec,
+    voiceGuide: settings.voiceGuide,
+    apiEndpoint: settings.apiEndpoint,
+    grab: grabWithRetry,
+    meta: currentMeta,
+    limits: () =>
+      capsRef.current
+        ? {
+            isoMin: capsRef.current.isoMin,
+            isoMax: capsRef.current.isoMax,
+            exposureMinNs: capsRef.current.exposureMinNs,
+            exposureMaxNs: capsRef.current.exposureMaxNs,
+          }
+        : undefined,
+    // 播报中、拍照中都不抓帧:前者会打断语音,后者会和快门抢相机
+    isBlocked: () => voiceSpeakingRef.current || captureBusyRef.current,
+    isAppActive: () => appActiveRef.current,
+  });
 
-  const runLiveAnalysis = useCallback(async () => {
-    // 正在拍照时不抓帧,避免打扰
-    if (!ready || analyzeBusyRef.current || captureBusyRef.current) return;
-    // 正在念上一条:等它念完,不要中途换内容
-    if (speakingRef.current) return;
-    lastAnalyzeAtRef.current = Date.now();
+  const { retry: retryLive, clearError, reportError, resetFailures } = live;
 
-    analyzeBusyRef.current = true;
-    setAnalyzing(true);
-    try {
-      // 直接抓预览画面(就是用户看到的那一帧),比拍全尺寸再缩图快得多。
-      // 刚从后台回来时纹理可能还没第一帧,重试两次再判定失败,避免假报错。
-      const base64 = await grabWithRetry();
+  const voice = useVoiceGuide({
+    enabled: settings.voiceGuide,
+    focused,
+    appActive,
+    suggestion: live.suggestion,
+    onFollowUp: () => void live.run(),
+    getLastRunAt: live.getLastRunAt,
+    speakingFlag: voiceSpeakingRef,
+  });
 
-      // 取景建议一律用低思考强度:它每几秒就要刷一次,不能被推理拖住
-      // 取景建议一律关闭思考:实测 thinking=low 仍会产生 300~800 个思维链 token、
-      // 单次 3.5~8 秒,而 disabled 只要 1.6~1.8 秒。取景不能拿延迟换质量。
-      const result = await analyze(base64, 'live', {
-        thinking: 'disabled',
-        endpoint: settings.apiEndpoint,
-        meta: currentMeta(),
-        limits: capsRef.current
-          ? {
-              isoMin: capsRef.current.isoMin,
-              isoMax: capsRef.current.isoMax,
-              exposureMinNs: capsRef.current.exposureMinNs,
-              exposureMaxNs: capsRef.current.exposureMaxNs,
-            }
-          : undefined,
-      });
-      if (result.mode === 'live') {
-        setSuggestion(result);
-        setError(null);
-        failuresRef.current = 0;
+  // 快门前的建议要带给点评,用 ref 保存以免闭包过期
+  const lastSuggestionRef = useRef<{ headline: string; action: string } | null>(null);
+  useEffect(() => {
+    const current = live.suggestion;
+    lastSuggestionRef.current =
+      current && current.mode === 'live'
+        ? { headline: current.headline, action: current.action }
+        : null;
+  }, [live.suggestion]);
+
+  /**
+   * 当前画面是否可以拍了。
+   * **纯提示**:出错、暂停、没有建议时都是 false,但快门永远可用。
+   */
+  const readyToShoot =
+    liveOn &&
+    !live.paused &&
+    !live.error &&
+    live.suggestion?.mode === 'live' &&
+    live.suggestion.readyToShoot === true;
+
+  useEffect(() => {
+    const offReady = addReadyListener(() => {
+      setReady(true);
+      clearError();
+      const pending = pendingAdjustRef.current;
+      if (pending) {
+        pendingAdjustRef.current = null;
+        applyAdjust(pending);
       }
-    } catch (err) {
-      // 退到后台时在途请求会超时/被系统挂起,这不是真的故障,不该弹红字
-      if (!appActiveRef.current) return;
-      failuresRef.current += 1;
-      setError((err as Error).message);
-      if (failuresRef.current >= MAX_CONSECUTIVE_FAILURES) setPaused(true);
-    } finally {
-      analyzeBusyRef.current = false;
-      setAnalyzing(false);
-    }
-  }, [ready, settings.apiEndpoint, currentMeta, grabWithRetry, setError, setPaused, setAnalyzing, setSuggestion]);
+      void getCapabilities().then((result) => {
+        if (result) {
+          capsRef.current = result;
+          setCaps(result);
+        }
+      });
+    });
+    const offParams = addParamsListener((p) => {
+      paramsRef.current = p;
+      setLiveParams(p);
+    });
+    const offError = addErrorListener((msg) => {
+      // 后台期间相机被系统断开是正常现象,不要留成红字
+      if (appActiveRef.current) reportError(msg);
+    });
+    return () => {
+      offReady();
+      offParams();
+      offError();
+    };
+  }, [applyAdjust, clearError, reportError]);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      const active = state === 'active';
+      appActiveRef.current = active;
+      setAppActive(active);
+      if (active) {
+        // 回来时清掉后台期间遗留的错误:那多半是挂起/超时造成的假故障
+        clearError();
+        resetFailures();
+      } else {
+        setReady(false);
+      }
+    });
+    return () => sub.remove();
+  }, [clearError, resetFailures]);
 
   /* eslint-disable react-hooks/refs, react-hooks/preserve-manual-memoization --
      手势回调是在用户操作时执行的,不是渲染期访问 ref。
@@ -464,60 +432,6 @@ export default function CameraScreen() {
     wasReadyRef.current = readyToShoot;
   }, [readyToShoot]);
 
-  // 语音播报:默认关闭,开启后每次新建议读一遍(可拍时读"可以拍了")
-  const lastSpokenRef = useRef<string>('');
-  useEffect(() => {
-    if (!settings.voiceGuide || !focused || !appActive) return;
-    if (!suggestion || suggestion.mode !== 'live') return;
-
-    const text = suggestion.readyToShoot ? suggestion.headline : suggestion.action;
-    if (!text || text === lastSpokenRef.current) return;
-    lastSpokenRef.current = text;
-
-    speakingRef.current = true;
-
-    // 兜底:某些 TTS 引擎不会回调 onDone,标记会一直卡住导致再也不分析
-    const estimated = Math.min(15000, text.length * 220 + 2500);
-    if (speakingTimerRef.current) clearTimeout(speakingTimerRef.current);
-    speakingTimerRef.current = setTimeout(() => {
-      speakingRef.current = false;
-      speakingTimerRef.current = null;
-      if (focused && appActive) void runLiveAnalysis();
-    }, estimated);
-
-    const finish = () => {
-      speakingRef.current = false;
-      if (speakingTimerRef.current) {
-        clearTimeout(speakingTimerRef.current);
-        speakingTimerRef.current = null;
-      }
-      // 说完立刻补一次分析,不用干等到下一个间隔;
-      // 但要和上一次分析隔开,避免 TTS 秒回时陷入连续请求
-      const wait = Math.max(0, VOICE_MIN_ANALYZE_GAP_MS - (Date.now() - lastAnalyzeAtRef.current));
-      if (followUpRef.current) clearTimeout(followUpRef.current);
-      followUpRef.current = setTimeout(() => {
-        followUpRef.current = null;
-        if (focused && appActive) void runLiveAnalysis();
-      }, wait);
-    };
-
-    void Speech.stop().then(() => {
-      Speech.speak(text, {
-        language: 'zh-CN',
-        rate: 1.0,
-        onDone: finish,
-        onStopped: finish,
-        onError: finish,
-      });
-    });
-  }, [settings.voiceGuide, focused, appActive, suggestion, runLiveAnalysis]);
-
-  // 离开页面/退到后台就闭嘴
-  useEffect(() => {
-    if (focused && appActive) return;
-    stopSpeaking();
-  }, [focused, appActive, stopSpeaking]);
-
   /** 闪光灯三态循环 */
   const cycleFlash = useCallback(() => {
     setFlashModeState((prev) => {
@@ -527,26 +441,13 @@ export default function CameraScreen() {
     });
   }, [setFlashModeState]);
 
-  // 手动重试:清掉暂停状态并立刻跑一次
+  // 手动重试:清掉暂停状态并立刻跑一次。用 ref 拿到最新实现,避免每次渲染都换函数
+  const stopVoice = voice.stop;
   const retryNow = useCallback(() => {
     // 用户主动换一条:打断当前播报
-    stopSpeaking();
-    lastSpokenRef.current = '';
-    setPaused(false);
-    failuresRef.current = 0;
-    void runLiveAnalysis();
-  }, [runLiveAnalysis, setPaused, stopSpeaking]);
-
-  useEffect(() => {
-    if (!liveOn || paused || !focused || !appActive || !ready || !keyReady || !permission.granted) return;
-    const warmup = setTimeout(() => void runLiveAnalysis(), 700);
-    const tickMs = settings.voiceGuide ? VOICE_FALLBACK_TICK_MS : settings.intervalSec * 1000;
-    const timer = setInterval(() => void runLiveAnalysis(), tickMs);
-    return () => {
-      clearTimeout(warmup);
-      clearInterval(timer);
-    };
-  }, [liveOn, paused, focused, appActive, ready, keyReady, permission.granted, runLiveAnalysis, settings.intervalSec, settings.voiceGuide, setPaused]);
+    stopVoice();
+    retryLive();
+  }, [stopVoice, retryLive]);
 
   const handleCapture = useCallback(async () => {
     if (!ready || captureBusyRef.current) return;
@@ -656,12 +557,12 @@ export default function CameraScreen() {
         }
       })();
     } catch (err) {
-      setError((err as Error).message);
+      reportError((err as Error).message);
     } finally {
       captureBusyRef.current = false;
       setCapturing(false);
     }
-  }, [flash, ready, settings, currentMeta, keyReady, setCapturing, setError]);
+  }, [flash, ready, settings, currentMeta, keyReady, setCapturing, reportError]);
 
   /** 倒计时进行中:每秒减一,到 0 自动拍 */
   useEffect(() => {
@@ -821,11 +722,11 @@ export default function CameraScreen() {
           {/* 专业面板是半透明的,压在卡片上方会把两层文字叠在一起,所以展开时先收起卡片 */}
           {keyReady && !proOpen ? (
             <SuggestionCard
-              suggestion={suggestion}
-              analyzing={analyzing}
-              error={error}
+              suggestion={live.suggestion}
+              analyzing={live.analyzing}
+              error={live.error}
               liveOn={liveOn}
-              paused={paused}
+              paused={live.paused}
               onOpenSettings={() => router.push('/settings')}
               onRefresh={retryNow}
             />
