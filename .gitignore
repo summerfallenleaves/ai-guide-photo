@@ -67,3 +67,6 @@ assets/apk/
 
 # 发布日志
 .release.log
+
+# gh CLI 的本地缓存(下载 workflow 日志时会写这里)
+/.cache/
