@@ -7,6 +7,25 @@
 
 ---
 
+## 零、本地验证 ≠ 发版
+
+**自己验证一个改动不要消耗版本号、不要打 tag、不要产生 Release。**
+
+```bash
+scripts/dev-build.sh
+# 产物:assets/apk/ai-guide-photo-dev.apk(固定文件名,永远是最新构建)
+# 版本号还是原来的,Releases 里也不会多一条
+```
+
+| 场景 | 用什么 | 会不会留痕迹 |
+| --- | --- | --- |
+| 自己验证改动 | `scripts/dev-build.sh` | 不会 |
+| 给测试者临时包 | `scripts/dev-build.sh` + 局域网传 | 不会 |
+| 正式发布给外部 | `scripts/release.sh` + tag + CI | 会(Releases 多一条) |
+
+**tag 是有成本的**:每个 tag 都会触发 CI 构建、生成 Release、占用版本号。
+随手打 tag 会让 Releases 页面变成一堆"其实没人用的版本"。
+
 ## 一、正常发布(三步)
 
 ### 1. 定版本号并提交

@@ -573,8 +573,6 @@ export default function CameraScreen() {
             </Pressable>
           </View>
 
-          <Text style={styles.hint}>直连 DeepSeek · 请求由本机发起</Text>
-
           <ProCameraPanel
             visible={proOpen}
             caps={caps}
@@ -814,12 +812,6 @@ const styles = StyleSheet.create({
     backgroundColor: palette.goodStrong,
   },
   appliedText: { color: palette.onGood, fontSize: type.subhead.fontSize, fontWeight: weight.bold },
-  hint: {
-    textAlign: 'center',
-    color: palette.fillStrong,
-    fontSize: type.overline.fontSize,
-    marginBottom: spacing.xxs,
-  },
   flash: {
     backgroundColor: palette.text,
   },

@@ -618,4 +618,6 @@ scripts/release.sh    同步版本号 + 构建 + 命名产物
 - 加带原生代码的库之后,Expo Go 就跑不了了,需要重新打包。
 - 优先用 Expo 官方模块,第三方库先确认在 Expo Go 里可用。
 - 提交前跑类型检查和 lint。
+- **不要随手打 tag**。tag = 正式发版 = CI 构建 + 生成 Release + 消耗版本号。
+  自己验证改动用 `scripts/dev-build.sh`(产物 `assets/apk/ai-guide-photo-dev.apk`),版本号和 Releases 都不受影响。
 - 改 UI 前读第三节的交互原则;改相机/并发前读第四、五、六节。
