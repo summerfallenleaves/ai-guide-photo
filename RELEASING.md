@@ -98,7 +98,22 @@ keytool -genkeypair -v -keystore my-release.keystore \
 
 ---
 
-## 三、谁能打 tag
+## 三、依赖怎么管
+
+**不做例行版本更新,只保留安全更新。**
+
+这个项目的依赖版本由 **Expo SDK** 决定 —— `npx expo install` 会按 SDK 挑兼容版本。
+让 Dependabot 自动提大版本 PR(eslint 9→10、typescript 6→7 之类)几乎必然不兼容,
+而且原生层(相机模块)的兼容性 JS 测试根本测不出来。
+
+- `.github/dependabot.yml` 里 `open-pull-requests-limit: 0` → 例行更新关闭
+- 仓库设置里的 **Dependabot security updates** 保持开启 → 有漏洞仍会自动提 PR
+- 需要升依赖时用 `npx expo install --check`,或整体 `npx expo upgrade`
+
+> 曾经一次性冒出 10 个 Dependabot PR(5 个 Actions + 5 个 npm),其中 3 个 CI 直接挂,
+> 全是不能合的大版本。这就是把例行更新关掉的原因。
+
+## 四、谁能打 tag
 
 **默认所有有写权限的协作者都能推 tag**,而推 `v*` tag 会触发发布流水线 ——
 等于谁都能发版。所以仓库加了**标签保护规则**(`发布 tag 保护`):
@@ -113,7 +128,7 @@ keytool -genkeypair -v -keystore my-release.keystore \
 
 > 想放开给某人:Settings → Rules → Rulesets → `发布 tag 保护` → 把对方加入 bypass 列表。
 
-## 四、发布前检查清单
+## 五、发布前检查清单
 
 ```bash
 npx tsc --noEmit                        # 类型
@@ -130,7 +145,7 @@ npm test                                # 单元测试
 
 ---
 
-## 五、CI 构建的两个坑(都踩过)
+## 六、CI 构建的两个坑(都踩过)
 
 **1. `gradle.properties` 末尾没有换行符**
 
@@ -148,7 +163,7 @@ expo.camera.barcode-scanner-enabled=falsereactNativeArchitectures=arm64-v8a
 prebuild 默认四种 ABI 全编(armeabi-v7a / arm64-v8a / x86 / x86_64)。
 只留 `arm64-v8a` 后降到 **35MB**,C++ 编译也快一半。
 
-## 六、构建产物里不该有的东西
+## 七、构建产物里不该有的东西
 
 CI 的构建路径是 `/home/runner/work/...`,不含个人信息,可以放心分发。
 
@@ -167,7 +182,7 @@ unzip -p assets/apk/xxx.apk lib/arm64-v8a/libappmodules.so | strings | grep "/Us
 
 ---
 
-## 七、出问题时
+## 八、出问题时
 
 | 现象 | 排查 |
 | --- | --- |
@@ -179,7 +194,7 @@ unzip -p assets/apk/xxx.apk lib/arm64-v8a/libappmodules.so | strings | grep "/Us
 
 ---
 
-## 八、本地发布脚本做了什么
+## 九、本地发布脚本做了什么
 
 `scripts/release.sh <版本>`:
 

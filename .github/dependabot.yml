@@ -1,24 +1,21 @@
+# 依赖策略:只保留「安全更新」,不做例行版本更新。
+#
+# 原因:这个项目的依赖版本由 Expo SDK 决定,`npx expo install` 会按 SDK 挑兼容版本。
+# 让 Dependabot 自动提大版本 PR(比如 eslint 9→10、typescript 6→7)几乎必然不兼容,
+# 而且原生层(相机模块)的兼容性 JS 测试根本测不出来。下次 `expo upgrade` 会一次性对齐所有版本。
+#
+# 安全更新由仓库设置里的 "Dependabot security updates" 控制,不依赖这个文件,继续生效。
+# 想把例行更新临时开回来:把下面的 open-pull-requests-limit 改成非 0 即可。
 version: 2
 updates:
-  # npm 依赖:每周一检查一次
   - package-ecosystem: npm
     directory: /
     schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 5
-    groups:
-      # 把 patch 级别的小更新合并成一个 PR,减少噪音
-      patch:
-        patterns: ['*']
-        update-types: ['patch']
-    commit-message:
-      prefix: 'chore(deps)'
+      interval: monthly
+    open-pull-requests-limit: 0
 
-  # GitHub Actions 版本
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: monthly
-    commit-message:
-      prefix: 'chore(ci)'
+    open-pull-requests-limit: 0
