@@ -18,20 +18,34 @@ camera settings with one tap**.
 
 <p align="center">
   <img src="docs/screenshots/main.jpg" width="230" alt="Camera screen: live suggestion, rule-of-thirds grid, level, zoom factor" />
-  &nbsp;
+  &nbsp;&nbsp;
   <img src="docs/screenshots/review.jpg" width="230" alt="Post-shot review: score, what worked, improvements, one-tap settings" />
-  &nbsp;
+</p>
+
+<p align="center">
+  <sub>Framing → post-shot review (with one-tap settings)</sub>
+</p>
+
+<p align="center">
   <img src="docs/screenshots/review-strict.jpg" width="230" alt="Strict review: 42 points with three concrete fixes" />
-</p>
-
-<p align="center">
+  &nbsp;&nbsp;
   <img src="docs/screenshots/history.jpg" width="230" alt="Photo history: average score, 7-day trend, verdict split, weakest dimension" />
-  &nbsp;
-  <img src="docs/screenshots/settings.jpg" width="230" alt="Settings: API key, fast mode, auto analysis, voice guide" />
 </p>
 
 <p align="center">
-  <sub>Camera → review → strict review · growth stats · settings</sub>
+  <sub>Strict review (42 points, three concrete fixes) → growth stats</sub>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/settings.jpg" width="230" alt="Settings: API key, fast mode, auto analysis, voice guide" />
+  <!-- Pro panel screenshot pending: drop it at docs/screenshots/pro-panel.jpg and uncomment
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/pro-panel.jpg" width="230" alt="Pro panel: exposure comp, ISO, shutter, focus, white balance" />
+  -->
+</p>
+
+<p align="center">
+  <sub>Settings · pro panel (pending)</sub>
 </p>
 
 ## What it does
