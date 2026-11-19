@@ -135,8 +135,13 @@ class Camera2View(context: Context, appContext: AppContext) : ExpoView(context, 
   }
 
   /**
-   * 把预览铺进容器:**保持缓冲原始比例、不做旋转**,等比放大铺满。
-   * 这一步是为了避免"把缓冲直接拉伸到容器大小"造成的人物变形。
+   * 把预览铺进容器:保持缓冲原始比例、等比放大。
+   *
+   * ⚠️ 缩放必须按**内容在屏幕上的方向**算,不能用缓冲区自己的宽高。
+   * 这台设备的预览缓冲是横着存的(实测 2000×900),内容靠 SurfaceTexture 的变换转成竖的。
+   * 若直接拿 2000×900 去和竖屏容器比,contain 会算出 0.54、cover 2.67,
+   * 结果把画面放大到只显示中间一小块 —— 表现为「预览比照片放大约 2 倍、看到的更少」。
+   * 判断依据:缓冲方向与容器方向不一致时就把宽高对调。
    */
   private fun fitPreview() {
     val ps = engine?.previewSize ?: return
@@ -144,13 +149,18 @@ class Camera2View(context: Context, appContext: AppContext) : ExpoView(context, 
     val vh = height
     if (vw <= 0 || vh <= 0 || ps.width <= 0 || ps.height <= 0) return
 
-    textureView.layoutParams = FrameLayout.LayoutParams(ps.width, ps.height, Gravity.CENTER)
+    val swap = (ps.width > ps.height) != (vw > vh)
+    val contentW = if (swap) ps.height else ps.width
+    val contentH = if (swap) ps.width else ps.height
+
+    textureView.layoutParams = FrameLayout.LayoutParams(contentW, contentH, Gravity.CENTER)
     textureView.rotation = 0f
     // 在"完整显示(contain)"和"铺满(cover)"之间插值:
     // ratio=0 留黑边但能看到全部画面;ratio=1 铺满但有裁切。
-    val containScale = kotlin.math.min(vw.toFloat() / ps.width, vh.toFloat() / ps.height)
-    val coverScale = kotlin.math.max(vw.toFloat() / ps.width, vh.toFloat() / ps.height)
-    val scale = containScale + (coverScale - containScale) * fillRatio
+    // 完整显示(contain):画面整个装进容器,多余的地方留黑。
+    // 取景范围由 JS 侧的布局决定 —— 容器做成和画面同比例,scale 自然就是 1,
+    // 也就不会再有"HAL 怎么裁"的不确定性。
+    val scale = kotlin.math.min(vw.toFloat() / contentW, vh.toFloat() / contentH)
     textureView.scaleX = scale
     textureView.scaleY = scale
     textureView.requestLayout()

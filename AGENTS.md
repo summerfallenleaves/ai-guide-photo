@@ -404,11 +404,17 @@ modules/camera2/                       本地 Expo Module(已入版本控制)
 
 - 当前用**填充比例** `DEFAULT_PREVIEW_FILL = 0.25`(在 `src/app/index.tsx`):
   `0` = 完整显示留黑边,`1` = 铺满裁切。0.25 是真机上手调出来的
+- ⚠️ **`caps.previewAspect` 是缓冲区的横向比例**(实测回报 2.222 = 20:9),
+  但屏幕上的画面被 HAL 转了 90°,实际显示比例是它的**倒数**(0.45)。
+  JS 里必须 `raw > 1 ? 1 / raw : raw`,否则九宫格会铺成中间一条横带
 - 原生按这个比例在 contain / cover 之间插值缩放
 - **拍照后会按同一个可见比例裁切照片**(`cropToAspect`),保证"看到的就是拍到的"
-- ⚠️ **裁切必须先换算坐标轴**:照片横向存储、靠 EXIF 转向,`takePicture` 会返回
-  `rotation`,JS 用 `rotation % 180 === 0 ? aspect : 1 / aspect` 换算。
-  直接按显示比例裁会把左右裁切变成上下裁切
+- ⚠️ **不要再按 `rotation` 反算比例** —— 这里踩过一次实打实的坑:
+  `ImageManipulator.renderAsync()` 已经把 EXIF 方向烘焙进像素,拿到的宽高**就是显示方向**。
+  早先又在外面按"横向存储"取了一次倒数(`1 / aspect`),同一个方向换算两次,
+  竖拍的照片被裁成一条横带(上下全丢),而**肉眼只会觉得"照片比预览窄",很难定位**。
+  现在公式收在 `computeCropBox(width, height, aspect)` 里,由 `__tests__/crop-geometry.test.ts`
+  的 7 个用例锁死方向语义;`takePicture` 的 `rotation` 只用于别处,裁切不再需要它。
 
 ### 其他相机相关约束
 

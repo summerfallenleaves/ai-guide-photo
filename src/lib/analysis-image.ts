@@ -52,44 +52,63 @@ export async function toAnalysisBase64(uri: string, width: number, height: numbe
  *
  * @param targetAspect 宽 / 高(按**显示方向**算)
  */
-export async function cropToAspect(
-  uri: string,
+
+/** 裁切框(以显示方向为准)。null 表示比例已经一致,不需要裁 */
+export type CropBox = { originX: number; originY: number; width: number; height: number };
+
+/**
+ * 算出把 width×height 裁成 targetAspect 的居中裁切框。
+ *
+ * 抽成纯函数是为了能单测:这条公式踩过一次坑 —— 传进来的是**已摆正**的尺寸,
+ * 却又按"横向存储"反算了一次比例,结果把竖图裁成了一条横带(上下全没了)。
+ *
+ * @param width  已摆正后的像素宽
+ * @param height 已摆正后的像素高
+ * @param targetAspect 期望的宽 / 高
+ */
+export function computeCropBox(
+  width: number,
+  height: number,
   targetAspect: number,
-  jpegRotation = 0,
-): Promise<string> {
+): CropBox | null {
+  if (!Number.isFinite(targetAspect) || targetAspect <= 0) return null;
+  if (!width || !height || width <= 0 || height <= 0) return null;
+
+  const current = width / height;
+  // 差得太小就不裁,省一次重编码
+  if (Math.abs(current - targetAspect) < 0.005) return null;
+
+  let cropW = width;
+  let cropH = height;
+  if (current > targetAspect) {
+    // 太宽:砍左右
+    cropW = Math.round(height * targetAspect);
+  } else {
+    // 太高:砍上下
+    cropH = Math.round(width / targetAspect);
+  }
+  return {
+    originX: Math.max(0, Math.round((width - cropW) / 2)),
+    originY: Math.max(0, Math.round((height - cropH) / 2)),
+    width: cropW,
+    height: cropH,
+  };
+}
+
+export async function cropToAspect(uri: string, targetAspect: number): Promise<string> {
   if (!Number.isFinite(targetAspect) || targetAspect <= 0) return uri;
 
-  // 照片是横向存储的,靠 EXIF 方向标记让它竖着显示。
-  // 真正的像素坐标是横向的,所以目标比例要反过来算。
-  const rawTarget =
-    jpegRotation % 180 === 0 ? targetAspect : 1 / targetAspect;
-
-  // 渲染一次拿到像素尺寸(此时仍是存储方向)
+  // renderAsync 会把 EXIF 方向烘焙进像素:拿到的宽高就是屏幕上看到的方向,
+  // 之后所有裁切都在这个坐标系里算,不需要再按存储方向换算。
   const base = await ImageManipulator.manipulate(uri).renderAsync();
-  const width = base.width;
-  const height = base.height;
-  if (!width || !height) return uri;
-
-  const currentAspect = width / height;
-  if (Math.abs(currentAspect - rawTarget) < 0.005) {
+  const box = computeCropBox(base.width, base.height, targetAspect);
+  if (!box) {
     const same = await base.saveAsync({ compress: 0.95, format: SaveFormat.JPEG });
     return same.uri;
   }
 
-  // 2. 按显示方向计算居中裁切区域
-  let cropW = width;
-  let cropH = height;
-  if (currentAspect > rawTarget) {
-    cropW = Math.round(height * rawTarget);
-  } else {
-    cropH = Math.round(width / rawTarget);
-  }
-  const originX = Math.max(0, Math.round((width - cropW) / 2));
-  const originY = Math.max(0, Math.round((height - cropH) / 2));
-
-  // 3. 在已摆正的图上裁切
   const cropped = await ImageManipulator.manipulate(base)
-    .crop({ originX, originY, width: cropW, height: cropH })
+    .crop(box)
     .renderAsync();
   const saved = await cropped.saveAsync({ compress: 0.95, format: SaveFormat.JPEG });
   return saved.uri;

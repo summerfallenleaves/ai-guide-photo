@@ -3,7 +3,7 @@ import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated } from 'react-native';
 
-import { cropToAspect, toAnalysisBase64 } from '@/lib/analysis-image';
+import { toAnalysisBase64 } from '@/lib/analysis-image';
 import { analyze } from '@/lib/api';
 import { setLastCapture, setReviewState } from '@/lib/capture-store';
 import type { CameraLimits } from '@/lib/deepseek';
@@ -17,8 +17,6 @@ export type CaptureFlowDeps = {
   hasApiKey: boolean;
   apiEndpoint: string;
   thinking: 'disabled' | 'high';
-  /** 预览可见区域的宽高比 —— 照片要按同一比例裁,才能"看到的就是拍到的" */
-  visibleAspect: () => number;
   meta: () => PhotoMeta | null;
   limits: () => CameraLimits | undefined;
   /** 快门前的最后一条建议,点评时用来对照"用户有没有照做" */
@@ -71,7 +69,8 @@ export function useCaptureFlow(deps: CaptureFlowDeps): CaptureFlow {
       const rawUri = `file://${shot.path}`;
       // 预览只显示了取景画面的一部分时,照片也要裁成同样的比例。
       // shot.rotation 告诉我们对横向存储的照片该换算哪个坐标轴。
-      const shotUri = await cropToAspect(rawUri, d.visibleAspect(), shot.rotation).catch(() => rawUri);
+      // 预览和拍照都是传感器原生比例,不需要裁切 —— 所见即所得由布局保证
+      const shotUri = rawUri;
 
       // 先直接写相册(Android 13+ 不需要权限),失败才申请
       const saveResult = await saveToAlbum(shotUri);

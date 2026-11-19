@@ -87,6 +87,9 @@ class Camera2Engine(
   var previewSize: Size? = null
     private set
 
+  /** 拍照流尺寸,用来算统一的裁切区域(必须和预览流取同一块传感器) */
+  private var captureSize: Size? = null
+
   private var facing: Int = CameraCharacteristics.LENS_FACING_BACK
 
   fun capabilities(): Map<String, Any> {
@@ -159,13 +162,14 @@ class Camera2Engine(
         val map = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
           ?: run { onError("拿不到相机配置"); return@post }
 
-        val (captureSize, preview) = chooseSizes(map, viewWidth, viewHeight)
+        val (chosenCapture, preview) = chooseSizes(map, viewWidth, viewHeight)
+        captureSize = chosenCapture
         previewSize = preview
         surfaceTexture.setDefaultBufferSize(preview.width, preview.height)
         previewSurface = Surface(surfaceTexture)
         isAttached = true
 
-        openCamera(manager, cameraId, surfaceTexture, viewWidth, viewHeight, facing, captureSize, 0)
+        openCamera(manager, cameraId, surfaceTexture, viewWidth, viewHeight, facing, chosenCapture, 0)
       } catch (t: Throwable) {
         onError("接上预览失败:${t.message}")
       }
@@ -265,7 +269,14 @@ class Camera2Engine(
       return Size(1280, 720) to Size(1280, 720)
     }
 
-    val capture = CameraMath.closestAspect(viewWidth, viewHeight, jpegPairs)
+    // ⚠️ 按**传感器原生比例**选流,不按屏幕比例。
+    // 请求 20:9 这类非原生比例的流时,由 HAL 自己决定怎么把 4:3 变成 20:9,
+    // 各厂实现不同 —— 实测这台设备预览流和拍照流取景差 1.33 倍(正好是 4:3 的宽高比)。
+    // 用原生比例,两端都不需要特殊处理,取景必然一致;要窄画面我们自己裁。
+    val active = characteristics?.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE)
+    val targetW = active?.width() ?: viewWidth
+    val targetH = active?.height() ?: viewHeight
+    val capture = CameraMath.closestAspect(targetW, targetH, jpegPairs)
       ?: jpegPairs.maxByOrNull { it.first }!!
     val preview = CameraMath.previewFor(capture.first, capture.second, texturePairs) ?: capture
 
@@ -337,6 +348,28 @@ class Camera2Engine(
     }
   }
 
+  /**
+   * 本次请求使用的传感器裁切区域。
+   *
+   * 以拍照流的宽高比为基准,在 activeArray 里取居中的最大同比例区域,
+   * 再按变焦倍数收缩。预览流和拍照流都用它,保证"看到的就是拍到的"。
+   */
+  private fun cropRegion(): Rect? {
+    val active = characteristics?.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE) ?: return null
+    val size = captureSize ?: return null
+    if (size.width <= 0 || size.height <= 0) return null
+
+    // 流本身就是原生比例,所以裁切区域直接用 activeArray,
+    // 只在变焦时等比收缩 —— 不做任何比例变换。
+    var w = active.width()
+    var h = active.height()
+    w = (w / zoomRatio).toInt().coerceAtLeast(1)
+    h = (h / zoomRatio).toInt().coerceAtLeast(1)
+    val cx = active.centerX()
+    val cy = active.centerY()
+    return Rect(cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2)
+  }
+
   /** 逐轴设置手动参数;设备不支持的轴自动跳过,不影响其他轴 */
   private fun applyManualParams(b: CaptureRequest.Builder) {
     val c = characteristics
@@ -374,17 +407,16 @@ class Camera2Engine(
       setAutoFocus(b, afModes)
     }
 
-    // --- 变焦(SENSOR 裁切区域) ---
-    val active = c?.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE)
-    if (active != null && zoomRatio > 1f) {
-      val cropW = (active.width() / zoomRatio).toInt().coerceAtLeast(1)
-      val cropH = (active.height() / zoomRatio).toInt().coerceAtLeast(1)
-      val left = active.centerX() - cropW / 2
-      val top = active.centerY() - cropH / 2
+    // --- 裁切区域(变焦 + 预览/拍照取景一致) ---
+    //
+    // ⚠️ 之前只在 zoom > 1 时才设置,1x 下预览流和拍照流各自裁各自的传感器区域,
+    // 实测取景范围差 1.1 倍左右 —— 表现为"照片比预览看到的更多"。
+    // 现在无论是否变焦都显式给两条流同一个裁切区域,取景范围就一致了。
+    cropRegion()?.let { region ->
       try {
-        b.set(CaptureRequest.SCALER_CROP_REGION, Rect(left, top, left + cropW, top + cropH))
+        b.set(CaptureRequest.SCALER_CROP_REGION, region)
       } catch (t: Throwable) {
-        onError("变焦不被支持:${t.message}")
+        onError("裁切区域不被支持:${t.message}")
       }
     }
 

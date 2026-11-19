@@ -7,7 +7,6 @@ import { ActivityIndicator, Animated, AppState, Linking, Pressable, StyleSheet, 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FlashButton } from '@/components/flash-button';
-import { GridOverlay } from '@/components/grid-overlay';
 import { AUTO_SELECTION, ProCameraPanel, type ProSelection } from '@/components/pro-camera-panel';
 import { LevelBadge } from '@/components/level-badge';
 import { SuggestionCard } from '@/components/suggestion-card';
@@ -25,8 +24,6 @@ import { Camera2Preview, formatShutterNs } from '@/lib/native-camera2';
 import { liveAnalysisEnabled, thinkingOf, useSettings } from '@/lib/settings';
 import { palette, radius, spacing, tabularNums, type, weight } from '@/lib/theme';
 
-/** 预览填充比例,实测调出来的默认值 */
-const DEFAULT_PREVIEW_FILL = 0.25;
 
 export default function CameraScreen() {
   const permission = useCameraPermission();
@@ -46,7 +43,6 @@ export default function CameraScreen() {
   /** API Key 存在设备加密存储里,保存后这里会自动更新 */
   const apiKey = useApiKey();
   const keyReady = !!apiKey;
-  const [showGrid, setShowGrid] = useState(true);
   /** 当前变焦倍数(数字变焦) */
   const [zoom, setZoom] = useState(1);
   /** 点按对焦的位置(屏幕坐标) */
@@ -77,7 +73,10 @@ export default function CameraScreen() {
     onShutterKey: () => {},
   });
 
-  const markNotReady = session.markNotReady;
+  // ⚠️ 只解构稳定的函数:session 是每次渲染新建的对象,
+  // 把它放进 effect 依赖会让焦点 effect 每帧重跑,cleanup 里把 ready/focused 重置掉,
+  // 表现为"快门按不了、不出建议、音量键失灵"。
+  const { queueAdjust, markNotReady } = session;
   const tilt = useTilt(focused && appActive && session.ready);
 
   useFocusEffect(
@@ -86,43 +85,43 @@ export default function CameraScreen() {
       const incoming = takePendingAdjust();
       if (incoming) {
         // 相机可能是刚挂载,排队等就绪事件再应用
-        session.queueAdjust(incoming);
+        queueAdjust(incoming);
       }
       return () => {
         // 离开页面立刻释放相机,避免和别的页面抢
         setFocused(false);
         markNotReady();
       };
-    }, [session, markNotReady]),
+    }, [queueAdjust, markNotReady]),
   );
 
   /**
    * 取景区域:相机画面按 contain 显示后,屏幕上被画面占据的那块矩形。
    * 网格线和点按对焦都要以这块为准,否则会和照片对不上。
    */
-  const previewAspect =
-    session.caps?.previewAspect && session.caps.previewAspect > 0 ? session.caps.previewAspect : 3 / 4;
-  /** 临时:预览填充比例,0=完整显示留黑边,1=铺满裁切 */
-  // 预览填充比例:0 = 完整显示(黑边),1 = 铺满(裁切)。
-  // 0.25 是真机上手调出来的值 —— 画面足够满,又不会裁掉太多。
-  const [fillRatio] = useState(DEFAULT_PREVIEW_FILL);
+  /**
+   * 取景区域。
+   *
+   * 传感器是 4:3、屏幕是 9:20。硬把 4:3 铺满屏幕就必须裁两侧,照片也得跟着裁 ——
+   * 那样 12.5MP 会掉到 4.2MP。所以这里**不裁**:预览按 4:3 完整显示,
+   * 照片就是完整的一帧;上下空出来的位置全部用来放 UI。
+   */
+  const HEADER_H = 96;
+  const BOTTOM_MIN = 210;
   const previewRect = useMemo(() => {
-    // 可见区域的比例:0 → 缓冲原比例(完整),1 → 屏幕比例(铺满)
-    const screenAspect = screenW / screenH;
-    const visibleAspect = previewAspect + (screenAspect - previewAspect) * fillRatio;
-    let w = screenW;
-    let h = screenW / visibleAspect;
-    if (h > screenH) {
-      h = screenH;
-      w = screenH * visibleAspect;
-    }
-    return { x: (screenW - w) / 2, y: (screenH - h) / 2, width: w, height: h, aspect: visibleAspect };
-  }, [previewAspect, fillRatio, screenW, screenH]);
+    const aspect = 3 / 4; // 宽 / 高(4:3 竖屏)
+    const maxH = Math.max(120, screenH - HEADER_H - BOTTOM_MIN);
+    const width = Math.min(screenW, maxH * aspect);
+    const height = width / aspect;
+    const y = HEADER_H + Math.max(0, (maxH - height) / 2);
+    return { x: (screenW - width) / 2, y, width, height, aspect };
+  }, [screenW, screenH]);
   const previewRectRef = useRef(previewRect);
   useEffect(() => {
     // 在 effect 里同步,避免渲染期写 ref
     previewRectRef.current = previewRect;
   }, [previewRect]);
+
   /**
    * 语音正在播报的标志。
    * 由页面持有、两个 hook 共用:分析循环据此跳过这一轮,语音 hook 负责置位。
@@ -216,12 +215,15 @@ export default function CameraScreen() {
     onFocusRing: setFocusPoint,
   });
 
-  /** 专业面板的每一档立即生效 */
-  const applyProSelection = useCallback((sel: ProSelection) => {
-    setProSelection(sel);
-    session.applyProSelection(sel);
-
-  }, [setProSelection, session]);
+  /** 专业面板的每一档立即生效(选择本身是界面状态,session 只管下发) */
+  const applySessionSelection = session.applyProSelection;
+  const applyProSelection = useCallback(
+    (selection: ProSelection) => {
+      setProSelection(selection);
+      applySessionSelection(selection);
+    },
+    [setProSelection, applySessionSelection],
+  );
 
   // 变成"可以拍了"时轻震一次,提示用户现在按快门
   const wasReadyRef = useRef(false);
@@ -245,7 +247,6 @@ export default function CameraScreen() {
     hasApiKey: keyReady,
     apiEndpoint: settings.apiEndpoint,
     thinking: thinkingOf(settings),
-    visibleAspect: () => previewRectRef.current.aspect,
     meta: session.meta,
     limits: () =>
       session.caps
@@ -296,16 +297,18 @@ export default function CameraScreen() {
       {/* 相机铺满整屏,横竖屏都只改叠加层的排版,不重建相机 */}
       {/* 只在页面可见时挂载预览:一离开就释放相机 */}
       {focused && appActive ? (
-        <Camera2Preview style={StyleSheet.absoluteFill} facing={facing} previewFill={fillRatio} />
-      ) : null}
-
-      {/* 三分线对齐到取景区域(不是整屏),这样和照片的三分线一致 */}
-      {focused && appActive ? (
-        <View
-          pointerEvents="none"
-          style={[styles.previewRect, { left: previewRect.x, top: previewRect.y, width: previewRect.width, height: previewRect.height }]}>
-          <GridOverlay visible={showGrid} />
-        </View>
+        <Camera2Preview
+          style={[
+            styles.previewBox,
+            {
+              left: previewRect.x,
+              top: previewRect.y,
+              width: previewRect.width,
+              height: previewRect.height,
+            },
+          ]}
+          facing={facing}
+        />
       ) : null}
 
       {/* 取景操作层:双指缩放 + 点按对焦 */}
@@ -341,6 +344,7 @@ export default function CameraScreen() {
         edges={['top', 'bottom']}
         pointerEvents="box-none">
         <View style={styles.topRow} pointerEvents="box-none">
+
           <View style={styles.brand}>
             <Text style={styles.brandText}>AI 拍照引导</Text>
             <Text style={styles.brandSub} numberOfLines={1}>
@@ -350,8 +354,10 @@ export default function CameraScreen() {
             </Text>
           </View>
           <View style={styles.topRight}>
-            <Pressable style={styles.topChip} onPress={() => setShowGrid((v) => !v)} hitSlop={8}>
-              <Text style={[styles.topChipText, showGrid && styles.topChipTextOn]}>网格</Text>
+            <Pressable style={styles.topChip} onPress={shutter.cycle} hitSlop={8}>
+              <Text style={[styles.topChipText, shutter.seconds > 0 && styles.topChipTextOn]}>
+                {shutter.seconds === 0 ? '定时' : `${shutter.seconds}s`}
+              </Text>
             </Pressable>
             {session.caps?.hasFlash ? (
               <FlashButton mode={session.flashMode} onPress={session.cycleFlash} />
@@ -395,11 +401,6 @@ export default function CameraScreen() {
             <View style={styles.leftControls}>
               <Pressable style={styles.sideButton} onPress={() => setProOpen((v) => !v)} hitSlop={10}>
                 <Text style={[styles.sideButtonText, proOpen && { color: palette.accent }]}>专业</Text>
-              </Pressable>
-              <Pressable style={styles.sideButton} onPress={shutter.cycle} hitSlop={10}>
-                <Text style={[styles.sideButtonText, shutter.seconds > 0 && { color: palette.accent }]}>
-                  {shutter.seconds === 0 ? '定时' : `${shutter.seconds}s`}
-                </Text>
               </Pressable>
             </View>
 
@@ -630,9 +631,9 @@ const styles = StyleSheet.create({
   },
   topChipText: { ...type.caption, color: palette.textDim },
   topChipTextOn: { color: palette.accent, fontWeight: weight.bold },
-  previewRect: {
+  previewBox: {
     position: 'absolute',
-    overflow: 'hidden',
+    backgroundColor: palette.bg,
   },
   noKeyBanner: {
     position: 'absolute',
