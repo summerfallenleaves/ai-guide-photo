@@ -3,7 +3,7 @@ import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated } from 'react-native';
 
-import { toAnalysisBase64 } from '@/lib/analysis-image';
+import { mirrorForFront, toAnalysisBase64 } from '@/lib/analysis-image';
 import { analyze } from '@/lib/api';
 import { setLastCapture, setReviewState } from '@/lib/capture-store';
 import type { CameraLimits } from '@/lib/deepseek';
@@ -14,6 +14,8 @@ import { takePicture } from '@/lib/native-camera2';
 
 export type CaptureFlowDeps = {
   cameraReady: boolean;
+  /** 当前是不是前置摄像头 —— 前置要把照片镜像成预览的样子 */
+  isFront: boolean;
   hasApiKey: boolean;
   apiEndpoint: string;
   thinking: 'disabled' | 'high';
@@ -69,8 +71,9 @@ export function useCaptureFlow(deps: CaptureFlowDeps): CaptureFlow {
       const rawUri = `file://${shot.path}`;
       // 预览只显示了取景画面的一部分时,照片也要裁成同样的比例。
       // shot.rotation 告诉我们对横向存储的照片该换算哪个坐标轴。
-      // 预览和拍照都是传感器原生比例,不需要裁切 —— 所见即所得由布局保证
-      const shotUri = rawUri;
+      // 预览和拍照都是传感器原生比例,不需要裁切 —— 所见即所得由布局保证。
+      // 前置还要补一次水平镜像:预览是镜像的,JPEG 不带镜像,不补就"照片和预览相反"。
+      const shotUri = await mirrorForFront(rawUri, d.isFront).catch(() => rawUri);
 
       // 先直接写相册(Android 13+ 不需要权限),失败才申请
       const saveResult = await saveToAlbum(shotUri);

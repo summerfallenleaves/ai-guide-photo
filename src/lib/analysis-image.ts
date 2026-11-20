@@ -1,4 +1,4 @@
-import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
+import { FlipType, ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 
 /**
  * DeepSeek 服务端最终会把图缩到约 1300×1300 的量级再推理。
@@ -7,6 +7,25 @@ import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
  */
 export const ANALYSIS_LONG_SIDE = 1280;
 const ANALYSIS_QUALITY = 0.85;
+
+/**
+ * 前置摄像头拍到的照片做水平镜像。
+ *
+ * 为什么需要:前置预览本身是镜像的(像照镜子),而 JPEG 只带旋转、不带镜像,
+ * 所以默认拍出来是"真实方向"。用户要求所见即所得 —— **照片必须和预览一致**,
+ * 于是在这里把照片也镜像一次。
+ *
+ * 代价:拍文字(菜单 / 路牌 / 书页)时,照片里的字会是反的。
+ * 这是"前置所见即所得"换来的,已知取舍。
+ */
+export async function mirrorForFront(uri: string, isFront: boolean): Promise<string> {
+  if (!isFront) return uri;
+  const flipped = await ImageManipulator.manipulate(uri)
+    .flip(FlipType.Horizontal)
+    .renderAsync();
+  const saved = await flipped.saveAsync({ compress: 0.95, format: SaveFormat.JPEG });
+  return saved.uri;
+}
 
 /**
  * 生成"只用于送模型分析"的 base64。

@@ -76,10 +76,6 @@ class Camera2Module : Module() {
       }
     }
 
-    Function("setPreviewFill") { ratio: Float ->
-      Camera2Bus.activeView?.fillRatio = ratio
-    }
-
     Function("setZoom") { ratio: Float ->
       Camera2Bus.activeView?.setZoom(ratio)
     }
@@ -110,10 +106,6 @@ class Camera2Module : Module() {
     }
 
     View(Camera2View::class) {
-      Prop("previewFill") { view: Camera2View, ratio: Float ->
-        view.fillRatio = ratio
-      }
-
       Prop("facing") { view: Camera2View, facing: String? ->
         view.facingName = if (facing == "front") "front" else "back"
       }

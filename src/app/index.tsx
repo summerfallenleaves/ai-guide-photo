@@ -244,6 +244,7 @@ export default function CameraScreen() {
 
   const { capturing, capture } = useCaptureFlow({
     cameraReady: session.ready,
+    isFront: facing === 'front',
     hasApiKey: keyReady,
     apiEndpoint: settings.apiEndpoint,
     thinking: thinkingOf(settings),

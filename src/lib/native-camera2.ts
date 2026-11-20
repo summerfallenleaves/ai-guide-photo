@@ -69,7 +69,6 @@ type Camera2NativeModule = {
     kelvin: number | null,
   ): void;
   setZoom(ratio: number): void;
-  setPreviewFill(ratio: number): void;
   setFlashMode(mode: string): void;
   setExposureCompensation(steps: number): void;
   focusAt(x: number, y: number): void;
@@ -83,7 +82,6 @@ export type Camera2PreviewProps = {
   style?: unknown;
   facing?: Camera2Facing;
   /** 预览填充比例:0 = 完整显示留黑边,1 = 铺满裁切 */
-  previewFill?: number;
 };
 
 /** 原生预览视图(需要本地构建的 APK,Expo Go 里不存在) */
@@ -122,9 +120,6 @@ export function setManual(params: Partial<{
 }
 
 /** 预览填充比例:0 = 完整显示(留黑边),1 = 铺满(裁切) */
-export function setPreviewFill(ratio: number): void {
-  native?.setPreviewFill(ratio);
-}
 
 /** 变焦倍数;设备不支持时静默忽略 */
 export function setZoom(ratio: number): void {

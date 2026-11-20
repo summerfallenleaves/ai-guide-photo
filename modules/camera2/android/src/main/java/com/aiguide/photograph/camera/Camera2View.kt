@@ -36,16 +36,6 @@ class Camera2View(context: Context, appContext: AppContext) : ExpoView(context, 
       }
     }
 
-  /** 预览填充比例:0 = 完整显示(留黑边),1 = 铺满(裁切) */
-  var fillRatio: Float = 0f
-    set(value) {
-      val next = value.coerceIn(0f, 1f)
-      if (field != next) {
-        field = next
-        post { fitPreview() }
-      }
-    }
-
   private var deviceOrientation = 0
 
   private val orientationListener = object : OrientationEventListener(context) {
@@ -161,6 +151,10 @@ class Camera2View(context: Context, appContext: AppContext) : ExpoView(context, 
     // 取景范围由 JS 侧的布局决定 —— 容器做成和画面同比例,scale 自然就是 1,
     // 也就不会再有"HAL 怎么裁"的不确定性。
     val scale = kotlin.math.min(vw.toFloat() / contentW, vh.toFloat() / contentH)
+    // ⚠️ 不要在这里做镜像补偿。
+    // 实测这台设备:**前置预览本来就是镜像的**(相机管线做的),而 SurfaceTexture 的变换矩阵
+    // 行列式并不反映这个镜像 —— 按行列式判断会误判,再翻一次就变成"不镜像"。
+    // 所以预览保持原样,镜像由拍照侧(`mirrorForFront`)补齐,两边才一致。
     textureView.scaleX = scale
     textureView.scaleY = scale
     textureView.requestLayout()
