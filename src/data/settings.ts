@@ -14,6 +14,8 @@ export type AppSettings = {
   apiEndpoint: string;
   /** 读取相机记录的光学参数,让建议能涉及焦距/ISO/快门 */
   paramAdvice: boolean;
+  /** 取景九宫格辅助线 */
+  gridEnabled: boolean;
   /**
    * 语音播报取景建议。
    * **默认关闭** —— 户外/公共场合出声可能打扰别人,必须用户主动打开。
@@ -30,6 +32,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   intervalSec: 3,
   apiEndpoint: '',
   paramAdvice: true,
+  gridEnabled: true,
   voiceGuide: false,
 };
 
@@ -82,6 +85,7 @@ function sanitize(input: Partial<AppSettings>): AppSettings {
       : DEFAULT_SETTINGS.intervalSec,
     apiEndpoint: typeof input.apiEndpoint === 'string' ? input.apiEndpoint.trim() : DEFAULT_SETTINGS.apiEndpoint,
     paramAdvice: typeof input.paramAdvice === 'boolean' ? input.paramAdvice : DEFAULT_SETTINGS.paramAdvice,
+    gridEnabled: typeof input.gridEnabled === 'boolean' ? input.gridEnabled : DEFAULT_SETTINGS.gridEnabled,
   };
 }
 

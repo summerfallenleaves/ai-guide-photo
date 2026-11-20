@@ -139,24 +139,33 @@ class Camera2View(context: Context, appContext: AppContext) : ExpoView(context, 
     val vh = height
     if (vw <= 0 || vh <= 0 || ps.width <= 0 || ps.height <= 0) return
 
+    // 缓冲区可能是横着存的,先换算成"屏幕上看到的方向"
     val swap = (ps.width > ps.height) != (vw > vh)
     val contentW = if (swap) ps.height else ps.width
     val contentH = if (swap) ps.width else ps.height
 
-    textureView.layoutParams = FrameLayout.LayoutParams(contentW, contentH, Gravity.CENTER)
     textureView.rotation = 0f
-    // 在"完整显示(contain)"和"铺满(cover)"之间插值:
-    // ratio=0 留黑边但能看到全部画面;ratio=1 铺满但有裁切。
-    // 完整显示(contain):画面整个装进容器,多余的地方留黑。
-    // 取景范围由 JS 侧的布局决定 —— 容器做成和画面同比例,scale 自然就是 1,
-    // 也就不会再有"HAL 怎么裁"的不确定性。
-    val scale = kotlin.math.min(vw.toFloat() / contentW, vh.toFloat() / contentH)
-    // ⚠️ 不要在这里做镜像补偿。
-    // 实测这台设备:**前置预览本来就是镜像的**(相机管线做的),而 SurfaceTexture 的变换矩阵
-    // 行列式并不反映这个镜像 —— 按行列式判断会误判,再翻一次就变成"不镜像"。
-    // 所以预览保持原样,镜像由拍照侧(`mirrorForFront`)补齐,两边才一致。
-    textureView.scaleX = scale
-    textureView.scaleY = scale
+    val contentAspect = contentW.toFloat() / contentH
+    val viewAspect = vw.toFloat() / vh
+
+    if (kotlin.math.abs(contentAspect - viewAspect) < 0.01f) {
+      // 比例一致:**直接铺满,不缩放**。
+      // 曾经这里按 buffer 尺寸布局再整体缩放 0.875,结果画面缩在视图中间、
+      // 四周留 21~28dp 黑边 —— 网格按视图画,看起来就"超出预览"。
+      // JS 侧已经把视图做成和画面同比例,铺满不会变形。
+      textureView.layoutParams = FrameLayout.LayoutParams(
+        FrameLayout.LayoutParams.MATCH_PARENT,
+        FrameLayout.LayoutParams.MATCH_PARENT,
+      )
+      textureView.scaleX = 1f
+      textureView.scaleY = 1f
+    } else {
+      // 兜底:比例对不上时退回 contain,宁可留黑边也不让画面变形
+      textureView.layoutParams = FrameLayout.LayoutParams(contentW, contentH, Gravity.CENTER)
+      val scale = kotlin.math.min(vw.toFloat() / contentW, vh.toFloat() / contentH)
+      textureView.scaleX = scale
+      textureView.scaleY = scale
+    }
     textureView.requestLayout()
   }
 

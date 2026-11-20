@@ -3,10 +3,22 @@ import * as Haptics from 'expo-haptics';
 import { router, useFocusEffect } from 'expo-router';
 import { GestureDetector } from 'react-native-gesture-handler';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, AppState, Linking, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import {
+  ActivityIndicator,
+  Animated,
+  AppState,
+  Image,
+  Linking,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FlashButton } from '@/components/flash-button';
+import { GridOverlay } from '@/components/grid-overlay';
 import { AUTO_SELECTION, ProCameraPanel, type ProSelection } from '@/components/pro-camera-panel';
 import { LevelBadge } from '@/components/level-badge';
 import { SuggestionCard } from '@/components/suggestion-card';
@@ -16,11 +28,12 @@ import { useShutterTimer } from '@/hooks/use-shutter-timer';
 import { usePreviewGestures } from '@/hooks/use-preview-gestures';
 import { useTilt } from '@/hooks/use-tilt';
 import { takePendingAdjust } from '@/data/capture-store';
+import { useHistory } from '@/data/history';
 import { useVoiceGuide } from '@/hooks/use-voice-guide';
 import { useApiKey } from '@/hooks/use-api-key';
 import { useCameraPermission } from '@/hooks/use-camera-permission';
 import { useCameraSession } from '@/hooks/use-camera-session';
-import { Camera2Preview, formatShutterNs } from '@/infra/camera/native-camera2';
+import { Camera2Preview } from '@/infra/camera/native-camera2';
 import { liveAnalysisEnabled, thinkingOf, useSettings } from '@/data/settings';
 import { palette, radius, spacing, tabularNums, type, weight } from '@/theme';
 
@@ -242,6 +255,10 @@ export default function CameraScreen() {
     retryLive();
   }, [stopVoice, retryLive]);
 
+  /** 历史里最近的一张照片,用作左下角入口的缩略图 */
+  const history = useHistory();
+  const latestPhoto = history[0]?.uri ?? null;
+
   const { capturing, capture } = useCaptureFlow({
     cameraReady: session.ready,
     isFront: facing === 'front',
@@ -312,6 +329,23 @@ export default function CameraScreen() {
         />
       ) : null}
 
+      {/* 九宫格:画在取景矩形内,和照片比例一致 */}
+      {focused && appActive && settings.gridEnabled ? (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.gridBox,
+            {
+              left: previewRect.x,
+              top: previewRect.y,
+              width: previewRect.width,
+              height: previewRect.height,
+            },
+          ]}>
+          <GridOverlay visible />
+        </View>
+      ) : null}
+
       {/* 取景操作层:双指缩放 + 点按对焦 */}
       <GestureDetector gesture={previewGesture}>
         <View style={StyleSheet.absoluteFill} />
@@ -346,14 +380,9 @@ export default function CameraScreen() {
         pointerEvents="box-none">
         <View style={styles.topRow} pointerEvents="box-none">
 
-          <View style={styles.brand}>
-            <Text style={styles.brandText}>AI 拍照引导</Text>
-            <Text style={styles.brandSub} numberOfLines={1}>
-              {session.liveParams
-                ? `ISO ${session.liveParams.iso} · ${formatShutterNs(session.liveParams.exposureNs)}${session.liveParams.manual ? ' · 手动' : ''}`
-                : '正在读取相机参数…'}
-            </Text>
-          </View>
+          <Pressable style={styles.topChip} onPress={() => setProOpen((v) => !v)} hitSlop={8}>
+            <Text style={[styles.topChipText, proOpen && styles.topChipTextOn]}>专业</Text>
+          </Pressable>
           <View style={styles.topRight}>
             <Pressable style={styles.topChip} onPress={shutter.cycle} hitSlop={8}>
               <Text style={[styles.topChipText, shutter.seconds > 0 && styles.topChipTextOn]}>
@@ -400,8 +429,13 @@ export default function CameraScreen() {
 
           <View style={styles.controls} pointerEvents="box-none">
             <View style={styles.leftControls}>
-              <Pressable style={styles.sideButton} onPress={() => setProOpen((v) => !v)} hitSlop={10}>
-                <Text style={[styles.sideButtonText, proOpen && { color: palette.accent }]}>专业</Text>
+              <Pressable
+                style={[styles.historyButton, latestPhoto ? null : styles.historyButtonEmpty]}
+                onPress={() => router.push('/history')}
+                hitSlop={10}>
+                {latestPhoto ? (
+                  <Image source={{ uri: latestPhoto }} style={styles.historyThumb} resizeMode="cover" />
+                ) : null}
               </Pressable>
             </View>
 
@@ -527,19 +561,6 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     backgroundColor: palette.text,
   },
-  brand: {
-    gap: spacing.xxs,
-  },
-  brandText: {
-    color: palette.text,
-    fontSize: type.headline.fontSize,
-    fontWeight: weight.bold,
-    letterSpacing: 0.4,
-  },
-  brandSub: {
-    color: palette.textFaint,
-    fontSize: type.overline.fontSize,
-  },
   bottomBlock: {
     gap: spacing.xl,
     paddingBottom: spacing.md,
@@ -632,6 +653,25 @@ const styles = StyleSheet.create({
   },
   topChipText: { ...type.caption, color: palette.textDim },
   topChipTextOn: { color: palette.accent, fontWeight: weight.bold },
+  gridBox: {
+    position: 'absolute',
+    overflow: 'hidden',
+  },
+  historyButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    overflow: 'hidden',
+    backgroundColor: palette.fill,
+  },
+  historyButtonEmpty: {
+    // 没有历史时是个纯白圆,不放文字
+    backgroundColor: palette.text,
+  },
+  historyThumb: {
+    width: 48,
+    height: 48,
+  },
   previewBox: {
     position: 'absolute',
     backgroundColor: palette.bg,

@@ -83,70 +83,12 @@ export default function SettingsScreen() {
           <Text style={styles.versionText}>版本 {Constants.expoConfig?.version ?? '—'}</Text>
         </View>
 
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>DeepSeek API Key</Text>
-            {savedKey && !editing ? (
-              <Pressable onPress={() => setEditing(true)} hitSlop={8}>
-                <Text style={styles.linkText}>更换</Text>
-              </Pressable>
-            ) : null}
-          </View>
-
-          {savedKey && !editing ? (
-            <>
-              <Text style={styles.keyValue}>{maskKey(savedKey)}</Text>
-              <Text style={styles.cardDesc}>
-                只加密保存在这台手机上(系统密钥库),不在安装包里,也不会上传到任何服务器。
-              </Text>
-              <View style={styles.actionRow}>
-                <Pressable style={styles.secondaryBtn} onPress={() => void handleTest()} disabled={testing}>
-                  {testing ? (
-                    <ActivityIndicator size="small" color={palette.accent} />
-                  ) : (
-                    <Text style={styles.secondaryBtnText}>测试连接</Text>
-                  )}
-                </Pressable>
-              </View>
-            </>
-          ) : (
-            <>
-              <TextInput
-                style={styles.input}
-                value={keyInput}
-                onChangeText={setKeyInput}
-                placeholder="sk-..."
-                placeholderTextColor={palette.fillStrong}
-                autoCapitalize="none"
-                autoCorrect={false}
-                secureTextEntry
-              />
-              <Text style={styles.cardDesc}>
-                在 platform.deepseek.com 创建。保存后只显示首尾各 4 位。
-              </Text>
-              <View style={styles.actionRow}>
-                <Pressable
-                  style={[styles.primaryBtn, !keyInput.trim() && styles.btnDisabled]}
-                  onPress={() => void handleSaveKey()}
-                  disabled={!keyInput.trim() || savingKey}>
-                  <Text style={styles.primaryBtnText}>{savingKey ? '保存中…' : '保存 Key'}</Text>
-                </Pressable>
-                {savedKey ? (
-                  <Pressable style={styles.secondaryBtn} onPress={() => setEditing(false)}>
-                    <Text style={styles.secondaryBtnText}>取消</Text>
-                  </Pressable>
-                ) : null}
-              </View>
-            </>
-          )}
-
-          {testResult ? (
-            <Text style={[styles.testResult, { color: testResult.ok ? palette.good : palette.danger }]}>
-              {testResult.ok ? '✓ ' : '✕ '}
-              {testResult.message}
-            </Text>
-          ) : null}
-        </View>
+        <SwitchRow
+          title="网格"
+          description="在取景画面上叠加九宫格辅助线,方便对齐三分法。"
+          value={settings.gridEnabled}
+          onValueChange={(v) => updateSettings({ gridEnabled: v })}
+        />
 
         <SwitchRow
           title="快速模式"
@@ -226,6 +168,71 @@ export default function SettingsScreen() {
           {liveOn ? null : (
             <Text style={styles.note}>需要「快速模式」和「自动分析」都打开才生效</Text>
           )}
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardTitle}>DeepSeek API Key</Text>
+            {savedKey && !editing ? (
+              <Pressable onPress={() => setEditing(true)} hitSlop={8}>
+                <Text style={styles.linkText}>更换</Text>
+              </Pressable>
+            ) : null}
+          </View>
+
+          {savedKey && !editing ? (
+            <>
+              <Text style={styles.keyValue}>{maskKey(savedKey)}</Text>
+              <Text style={styles.cardDesc}>
+                只加密保存在这台手机上(系统密钥库),不在安装包里,也不会上传到任何服务器。
+              </Text>
+              <View style={styles.actionRow}>
+                <Pressable style={styles.secondaryBtn} onPress={() => void handleTest()} disabled={testing}>
+                  {testing ? (
+                    <ActivityIndicator size="small" color={palette.accent} />
+                  ) : (
+                    <Text style={styles.secondaryBtnText}>测试连接</Text>
+                  )}
+                </Pressable>
+              </View>
+            </>
+          ) : (
+            <>
+              <TextInput
+                style={styles.input}
+                value={keyInput}
+                onChangeText={setKeyInput}
+                placeholder="sk-..."
+                placeholderTextColor={palette.fillStrong}
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry
+              />
+              <Text style={styles.cardDesc}>
+                在 platform.deepseek.com 创建。保存后只显示首尾各 4 位。
+              </Text>
+              <View style={styles.actionRow}>
+                <Pressable
+                  style={[styles.primaryBtn, !keyInput.trim() && styles.btnDisabled]}
+                  onPress={() => void handleSaveKey()}
+                  disabled={!keyInput.trim() || savingKey}>
+                  <Text style={styles.primaryBtnText}>{savingKey ? '保存中…' : '保存 Key'}</Text>
+                </Pressable>
+                {savedKey ? (
+                  <Pressable style={styles.secondaryBtn} onPress={() => setEditing(false)}>
+                    <Text style={styles.secondaryBtnText}>取消</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            </>
+          )}
+
+          {testResult ? (
+            <Text style={[styles.testResult, { color: testResult.ok ? palette.good : palette.danger }]}>
+              {testResult.ok ? '✓ ' : '✕ '}
+              {testResult.message}
+            </Text>
+          ) : null}
         </View>
 
         <View style={styles.card}>
