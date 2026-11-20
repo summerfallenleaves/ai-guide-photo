@@ -19,35 +19,31 @@
 - 发版流程见 [RELEASING.md](./RELEASING.md)
 
 <p align="center">
-  <img src="docs/screenshots/main.jpg" width="230" alt="取景页:实时建议、水平仪、变焦倍率" />
+  <img src="docs/screenshots/main.jpg" width="230" alt="取景页:实时建议、4:3 取景框、水平仪、实时 ISO 与快门" />
   &nbsp;&nbsp;
-  <img src="docs/screenshots/review.jpg" width="230" alt="拍后点评:评分、做得好的地方、改进项、可一键应用的参数" />
+  <img src="docs/screenshots/review.jpg" width="230" alt="拍后点评:52 分、做得好的地方、3 条具体改进、可一键应用的参数" />
 </p>
 
 <p align="center">
-  <sub>取景 → 拍后点评(含可一键应用的参数)</sub>
+  <sub>取景 → 拍后点评(拍得不好就照实说)</sub>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/review-strict.jpg" width="230" alt="严格评审:42 分,给出 3 条具体改进" />
-  &nbsp;&nbsp;
   <img src="docs/screenshots/history.jpg" width="230" alt="拍照历史:平均分、7 天趋势、结论分布、最常需要改的维度" />
-</p>
-
-<p align="center">
-  <sub>严格评审(42 分,3 条具体动作)→ 成长统计</sub>
-</p>
-
-<p align="center">
-  <img src="docs/screenshots/settings.jpg" width="230" alt="设置:API Key、快速模式、自动分析、语音播报" />
-  <!-- 专业参数面板截图待补:放到 docs/screenshots/pro-panel.jpg 后取消下面这行注释
   &nbsp;&nbsp;
   <img src="docs/screenshots/pro-panel.jpg" width="230" alt="专业参数面板:曝光补偿 / ISO / 快门 / 对焦 / 白平衡" />
-  -->
 </p>
 
 <p align="center">
-  <sub>设置 · 专业参数面板(待补)</sub>
+  <sub>成长统计 → 专业参数(边调边看)</sub>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/settings.jpg" width="230" alt="设置:API Key、快速模式、自动分析、语音播报、参数建议" />
+</p>
+
+<p align="center">
+  <sub>设置:API Key 只加密存在本机</sub>
 </p>
 
 ---

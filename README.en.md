@@ -17,35 +17,26 @@ camera settings with one tap**.
 - Android only. iOS untested, HarmonyOS NEXT unsupported
 
 <p align="center">
-  <img src="docs/screenshots/main.jpg" width="230" alt="Camera screen: live suggestion, level, zoom factor" />
+  <img src="docs/screenshots/main.jpg" width="230" alt="Camera screen: live suggestion, 4:3 viewfinder, level, live ISO and shutter" />
   &nbsp;&nbsp;
-  <img src="docs/screenshots/review.jpg" width="230" alt="Post-shot review: score, what worked, improvements, one-tap settings" />
+  <img src="docs/screenshots/review.jpg" width="230" alt="Post-shot review: 52 points, what worked, three concrete fixes, one-tap settings" />
 </p>
-
 <p align="center">
-  <sub>Framing → post-shot review (with one-tap settings)</sub>
+  <sub>Framing → post-shot review (a weak shot gets an honest score)</sub>
 </p>
-
 <p align="center">
-  <img src="docs/screenshots/review-strict.jpg" width="230" alt="Strict review: 42 points with three concrete fixes" />
-  &nbsp;&nbsp;
   <img src="docs/screenshots/history.jpg" width="230" alt="Photo history: average score, 7-day trend, verdict split, weakest dimension" />
-</p>
-
-<p align="center">
-  <sub>Strict review (42 points, three concrete fixes) → growth stats</sub>
-</p>
-
-<p align="center">
-  <img src="docs/screenshots/settings.jpg" width="230" alt="Settings: API key, fast mode, auto analysis, voice guide" />
-  <!-- Pro panel screenshot pending: drop it at docs/screenshots/pro-panel.jpg and uncomment
   &nbsp;&nbsp;
   <img src="docs/screenshots/pro-panel.jpg" width="230" alt="Pro panel: exposure comp, ISO, shutter, focus, white balance" />
-  -->
 </p>
-
 <p align="center">
-  <sub>Settings · pro panel (pending)</sub>
+  <sub>Growth stats → pro panel (adjust while watching the frame)</sub>
+</p>
+<p align="center">
+  <img src="docs/screenshots/settings.jpg" width="230" alt="Settings: API key, fast mode, auto analysis, voice guide, parameter hints" />
+</p>
+<p align="center">
+  <sub>Settings: the API key lives only on this device</sub>
 </p>
 
 ## What it does
