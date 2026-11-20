@@ -17,7 +17,7 @@ camera settings with one tap**.
 - Android only. iOS untested, HarmonyOS NEXT unsupported
 
 <p align="center">
-  <img src="docs/screenshots/main.jpg" width="230" alt="Camera screen: live suggestion, rule-of-thirds grid, level, zoom factor" />
+  <img src="docs/screenshots/main.jpg" width="230" alt="Camera screen: live suggestion, level, zoom factor" />
   &nbsp;&nbsp;
   <img src="docs/screenshots/review.jpg" width="230" alt="Post-shot review: score, what worked, improvements, one-tap settings" />
 </p>
