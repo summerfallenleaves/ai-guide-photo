@@ -1,7 +1,7 @@
 import { useMemo, useRef } from 'react';
 import { Gesture } from 'react-native-gesture-handler';
 
-import { focusAt, setZoom as setZoomNative, type Camera2CapsFull } from '@/lib/native-camera2';
+import { focusAt, setZoom as setZoomNative, type Camera2CapsFull } from '@/infra/camera/native-camera2';
 
 /** 对焦框显示时长 */
 const FOCUS_RING_MS = 1200;

@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 
-import { palette, radius, spacing, type, weight, tabularNums } from '@/lib/theme';
+import { palette, radius, spacing, type, weight, tabularNums } from '@/theme';
 
 const LEVEL_THRESHOLD = 1.5;
 

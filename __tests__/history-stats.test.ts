@@ -1,5 +1,5 @@
-import { computeHistoryStats } from '../src/lib/history-stats';
-import type { HistoryEntry } from '../src/lib/history';
+import { computeHistoryStats } from '@/domain/guidance/history-stats';
+import type { HistoryEntry } from '@/data/history';
 
 jest.mock('expo-file-system', () => ({}));
 

@@ -3,7 +3,7 @@ import { useEffect, useMemo } from 'react';
 import { Image, Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { setLastCapture, setReviewState } from '@/lib/capture-store';
+import { setLastCapture, setReviewState } from '@/data/capture-store';
 import {
   clearHistory,
   loadHistory,
@@ -11,9 +11,9 @@ import {
   RETENTION_DAYS,
   useHistory,
   type HistoryEntry,
-} from '@/lib/history';
-import { computeHistoryStats } from '@/lib/history-stats';
-import { palette, radius, spacing, tabularNums, type, weight } from '@/lib/theme';
+} from '@/data/history';
+import { computeHistoryStats } from '@/domain/guidance/history-stats';
+import { palette, radius, spacing, tabularNums, type, weight } from '@/theme';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 

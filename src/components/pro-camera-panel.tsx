@@ -1,8 +1,8 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import type { Camera2CapsFull, Camera2Params } from '@/lib/native-camera2';
-import { formatShutterNs } from '@/lib/native-camera2';
-import { palette, radius, spacing, tabularNums, type, weight } from '@/lib/theme';
+import type { Camera2CapsFull, Camera2Params } from '@/infra/camera/native-camera2';
+import { formatShutterNs } from '@/infra/camera/native-camera2';
+import { palette, radius, spacing, tabularNums, type, weight } from '@/theme';
 
 /** 每一轴的选择:null 表示自动 */
 export type ProSelection = {

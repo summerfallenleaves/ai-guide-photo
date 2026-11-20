@@ -4,7 +4,7 @@ import {
   liveIntervalMs,
   thinkingOf,
   type AppSettings,
-} from '../src/lib/settings';
+} from '@/data/settings';
 
 const base: AppSettings = { ...DEFAULT_SETTINGS };
 

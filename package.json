@@ -63,8 +63,10 @@
     ],
     "collectCoverage": true,
     "collectCoverageFrom": [
-      "src/lib/**/*.ts",
-      "!src/lib/api.ts"
+      "src/domain/**/*.ts",
+      "src/data/**/*.ts",
+      "src/infra/**/*.ts",
+      "!src/infra/ai/index.ts"
     ],
     "coverageReporters": [
       "text-summary",

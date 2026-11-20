@@ -51,7 +51,7 @@ Expo 每个 SDK 版本都有破坏性改动,记忆里的 API 很可能已经改�
 
 ### 3.0 设计 token(唯一事实来源)
 
-**所有视觉值都在 `src/lib/theme.ts`**,页面里不写字面量。
+**所有视觉值都在 `src/theme.ts`**,页面里不写字面量。
 
 | token | 内容 |
 | --- | --- |
@@ -75,7 +75,7 @@ Expo 每个 SDK 版本都有破坏性改动,记忆里的 API 很可能已经改�
 - **统一的浮层语言**:背景 `rgba(20,20,24,0.82)` + 1px 描边 `rgba(255,255,255,0.14)` + 圆角 22
 - **配色**:强调 `#5BC8FF`、成功 `#4ADE80`、警告 `#FBBF24`、危险 `#F87171`
 - **文字层级**:标题 19/700 → 正文 15/500 → 说明 12.5/400(灰 `rgba(255,255,255,0.58)`)
-- 颜色与圆角统一放在 `src/lib/theme.ts`,**不要在组件里写死色值**
+- 颜色与圆角统一放在 `src/theme.ts`,**不要在组件里写死色值**
 
 ### 3.2 相机页 `src/app/index.tsx`(只负责组合与布局)
 
@@ -84,15 +84,31 @@ Expo 每个 SDK 版本都有破坏性改动,记忆里的 API 很可能已经改�
 
 | 文件 | 职责 |
 | --- | --- |
-| `src/lib/live-analysis-policy.ts` | **纯函数**:这一轮能不能跑、失败怎么计数、间隔取多少。有单测 |
+| `src/domain/guidance/live-analysis-policy.ts` | **纯函数**:这一轮能不能跑、失败怎么计数、间隔取多少。有单测 |
 | `hooks/use-live-analysis.ts` | 分析循环:抓帧、调模型、失败暂停、定时器 |
 | `hooks/use-voice-guide.ts` | 播报 + 播报期间冻结建议 |
-| `hooks/use-capture-flow.ts` | 拍照 → 裁切 → 存相册 → 进复盘 → 后台点评 |
+| `hooks/use-capture-flow.ts` | 拍照 → 前置镜像 → 存相册 → 进复盘 → 后台点评 |
 | `hooks/use-shutter-timer.ts` | 定时快门(关/3s/10s + 倒计时) |
 | `hooks/use-preview-gestures.ts` | 捏合缩放 + 点按对焦(唯一需要 React Compiler 豁免的地方) |
 
 **约定**:新逻辑优先放进对应的 hook 或纯函数;页面只做组合和布局。
 判断类逻辑先写成纯函数(可以单测),再让 hook 调它。
+
+### 3.2.1 五层目录(改代码前先确认放哪一层)
+
+| 层 | 目录 | 只做这件事 |
+| --- | --- | --- |
+| 表现层 | `src/app` `src/components` `src/theme.ts` | 组合与布局 |
+| 应用层 | `src/hooks` | 时机、编排、副作用 |
+| 领域层 | `src/domain/guidance` `src/domain/shared` | 规则,纯函数,不碰 IO |
+| 数据层 | `src/data` | 持久化(设置 / 密钥 / 历史 / 内存态) |
+| 基础设施层 | `src/infra` | 相机门面、模型客户端、图片、相册 |
+
+**AI 不是一个目录,而是两半**:规则在 `domain/guidance`(prompt / scoring / 调度 / 统计),
+模型调用在 `infra/ai`(传输与报错分类)。换模型只动 `infra/ai`,改规则只动 `domain/guidance`。
+
+**硬边界:相机侧禁止依赖 AI**,由 ESLint `no-restricted-imports` 强制。
+没有 API Key 时相机必须完全可用 —— 这条是产品要求,不是风格偏好。
 
 
 竖屏(唯一形态):
@@ -197,10 +213,10 @@ Expo 每个 SDK 版本都有破坏性改动,记忆里的 API 很可能已经改�
 
 | 数据 | 存放 | 实现 |
 | --- | --- | --- |
-| 用户设置 | AsyncStorage | `src/lib/settings.ts` + `useSettings()` |
-| API Key | SecureStore(加密) | `src/lib/secure-key.ts` + `useApiKey()` |
-| 刚拍的照片 / 点评状态 | 内存 | `src/lib/capture-store.ts` |
-| 拍照历史 | AsyncStorage + 文档目录 | `src/lib/history.ts` |
+| 用户设置 | AsyncStorage | `src/data/settings.ts` + `useSettings()` |
+| API Key | SecureStore(加密) | `src/data/secure-key.ts` + `useApiKey()` |
+| 刚拍的照片 / 点评状态 | 内存 | `src/data/capture-store.ts` |
+| 拍照历史 | AsyncStorage + 文档目录 | `src/data/history.ts` |
 
 三处都用 `useSyncExternalStore` 订阅,保存后相关页面自动刷新,**不要在各页面各存一份副本**。
 
@@ -214,7 +230,7 @@ Expo 每个 SDK 版本都有破坏性改动,记忆里的 API 很可能已经改�
 ```
 
 送模型的图缩小是因为**服务端本来就会把图缩到约 1300×1300**;上传原图纯属浪费带宽。
-缩图逻辑在 `src/lib/analysis-image.ts`。
+缩图逻辑在 `src/infra/analysis-image.ts`。
 
 ### 4.4 AI 调用参数
 
@@ -287,7 +303,7 @@ Expo 每个 SDK 版本都有破坏性改动,记忆里的 API 很可能已经改�
 
 ### 历史统计(零 AI 成本)
 
-`src/lib/history-stats.ts` 里的 `computeHistoryStats()` 是**纯函数**:
+`src/domain/guidance/history-stats.ts` 里的 `computeHistoryStats()` 是**纯函数**:
 平均分、最高分、verdict 分布、最常出问题的维度、最近 7 天每日均分。
 
 这些数据本来就在本地,**不要再为统计去调一次模型**。
@@ -369,7 +385,7 @@ modules/camera2/                       本地 Expo Module(已入版本控制)
 见 TODO.md——需要时从 git 历史恢复）
 ```
 
-**JS 门面**在 `src/lib/native-camera2.ts`,应用只依赖这一层;它负责优雅降级
+**JS 门面**在 `src/infra/camera/native-camera2.ts`,应用只依赖这一层;它负责优雅降级
 (模块不存在时给可读错误),并由 `__tests__/native-camera2.contract.test.ts` 锁死契约。
 
 ### 关键实现约定
@@ -427,7 +443,7 @@ modules/camera2/                       本地 Expo Module(已入版本控制)
 - 预览按 **contain** 完整显示,取景范围由 JS 布局决定(容器做成同比例,`scale` 恒为 1)
 - **照片不裁切**:4080×3072 全画幅,所见即所得由"两条流同比例 + 都不裁"保证
 - 裁切相关代码(`cropToAspect` / `computeCropBox` / `crop-geometry.test.ts`)已删除,
-  需要时 `git show v0.0.5:src/lib/analysis-image.ts`
+  需要时 `git show v0.0.5:src/infra/analysis-image.ts`
 - 选流与裁切区域已抽成纯函数 `CameraMath.captureFor` / `CameraMath.zoomCrop`,**有 Kotlin 测试**
 
 > ⚠️ **为什么不能请求 20:9 这类非原生比例的流**(踩过三轮坑,结论写在这里):
@@ -638,7 +654,7 @@ scripts/release.sh    同步版本号 + 构建 + 命名产物
 - 点评已加 `verdict` 三档并与分数自洽(`keep` 会强制丢弃 `params`),
   但**真实照片下的效果还没验证过**——见 TODO.md
 - iOS 完全未验证(没有真机,模拟器相机不可用)
-- 拍照历史已实现(`src/lib/history.ts` + `src/app/history.tsx`):照片存文档目录,
+- 拍照历史已实现(`src/data/history.ts` + `src/app/history.tsx`):照片存文档目录,
   **按自然日保留最近 7 天**,列表按天分组;过期条目在启动和每次拍照时清理(含照片文件)
 - 评分可复现性:已加打分锚点 + `temperature: 0.2` + prompt 明确要求一致,
   **仍待真实照片验证**

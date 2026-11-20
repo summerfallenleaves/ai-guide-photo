@@ -15,14 +15,14 @@ import { useLiveAnalysis } from '@/hooks/use-live-analysis';
 import { useShutterTimer } from '@/hooks/use-shutter-timer';
 import { usePreviewGestures } from '@/hooks/use-preview-gestures';
 import { useTilt } from '@/hooks/use-tilt';
-import { takePendingAdjust } from '@/lib/capture-store';
+import { takePendingAdjust } from '@/data/capture-store';
 import { useVoiceGuide } from '@/hooks/use-voice-guide';
 import { useApiKey } from '@/hooks/use-api-key';
 import { useCameraPermission } from '@/hooks/use-camera-permission';
 import { useCameraSession } from '@/hooks/use-camera-session';
-import { Camera2Preview, formatShutterNs } from '@/lib/native-camera2';
-import { liveAnalysisEnabled, thinkingOf, useSettings } from '@/lib/settings';
-import { palette, radius, spacing, tabularNums, type, weight } from '@/lib/theme';
+import { Camera2Preview, formatShutterNs } from '@/infra/camera/native-camera2';
+import { liveAnalysisEnabled, thinkingOf, useSettings } from '@/data/settings';
+import { palette, radius, spacing, tabularNums, type, weight } from '@/theme';
 
 
 export default function CameraScreen() {

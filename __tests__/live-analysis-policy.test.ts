@@ -7,7 +7,7 @@ import {
   shouldScheduleAnalysis,
   speechWatchdogMs,
   type AnalyzeGate,
-} from '../src/lib/live-analysis-policy';
+} from '@/domain/guidance/live-analysis-policy';
 
 const base: AnalyzeGate = {
   liveOn: true,

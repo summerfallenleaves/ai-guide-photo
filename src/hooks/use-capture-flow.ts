@@ -3,14 +3,14 @@ import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated } from 'react-native';
 
-import { mirrorForFront, toAnalysisBase64 } from '@/lib/analysis-image';
-import { analyze } from '@/lib/api';
-import { setLastCapture, setReviewState } from '@/lib/capture-store';
-import type { CameraLimits } from '@/lib/deepseek';
-import type { PhotoMeta } from '@/lib/exif';
-import { addHistoryEntry, loadHistory, persistPhoto, updateHistoryEntry } from '@/lib/history';
-import { saveToAlbum } from '@/lib/media';
-import { takePicture } from '@/lib/native-camera2';
+import { mirrorForFront, toAnalysisBase64 } from '@/infra/analysis-image';
+import { analyze } from '@/infra/ai';
+import { setLastCapture, setReviewState } from '@/data/capture-store';
+import type { CameraLimits } from '@/infra/ai/client';
+import type { PhotoMeta } from '@/domain/shared/exif';
+import { addHistoryEntry, loadHistory, persistPhoto, updateHistoryEntry } from '@/data/history';
+import { saveToAlbum } from '@/infra/media';
+import { takePicture } from '@/infra/camera/native-camera2';
 
 export type CaptureFlowDeps = {
   cameraReady: boolean;

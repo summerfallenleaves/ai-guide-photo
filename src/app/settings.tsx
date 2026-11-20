@@ -4,17 +4,17 @@ import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { DEFAULT_ENDPOINT, verifyApiKey } from '@/lib/deepseek';
+import { DEFAULT_ENDPOINT, verifyApiKey } from '@/infra/ai/client';
 import { useApiKey } from '@/hooks/use-api-key';
-import { getCachedApiKey, maskKey, saveApiKey } from '@/lib/secure-key';
+import { getCachedApiKey, maskKey, saveApiKey } from '@/data/secure-key';
 import {
   INTERVAL_MAX,
   INTERVAL_MIN,
   liveAnalysisEnabled,
   updateSettings,
   useSettings,
-} from '@/lib/settings';
-import { palette, radius, spacing, type, weight } from '@/lib/theme';
+} from '@/data/settings';
+import { palette, radius, spacing, type, weight } from '@/theme';
 
 export default function SettingsScreen() {
   const settings = useSettings();

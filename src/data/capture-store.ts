@@ -1,5 +1,5 @@
-import type { PhotoMeta } from './exif';
-import type { AdjustParams, CaptureResult } from './types';
+import type { PhotoMeta } from '@/domain/shared/exif';
+import type { AdjustParams, CaptureResult } from '@/domain/shared/types';
 
 /**
  * 把"刚刚拍下的这张"存在内存里,跨页面读取。

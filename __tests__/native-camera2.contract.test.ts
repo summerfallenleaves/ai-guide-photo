@@ -5,7 +5,7 @@
  * 方法名、参数顺序、事件名、降级行为,任何一项变了这里都会红。
  */
 
-type CameraModule = typeof import('../src/lib/native-camera2');
+type CameraModule = typeof import('@/infra/camera/native-camera2');
 
 type NativeMock = {
   takePicture: jest.Mock;
@@ -66,7 +66,7 @@ function loadModule(): { mod: CameraModule; native: NativeMock } {
   mockNative = native;
   jest.resetModules();
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const mod = require('../src/lib/native-camera2') as CameraModule;
+  const mod = require('@/infra/camera/native-camera2') as CameraModule;
   return { mod, native };
 }
 
@@ -74,7 +74,7 @@ function loadWithoutNative(): CameraModule {
   mockNative = null;
   jest.resetModules();
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  return require('../src/lib/native-camera2') as CameraModule;
+  return require('@/infra/camera/native-camera2') as CameraModule;
 }
 
 describe('原生模块存在时', () => {

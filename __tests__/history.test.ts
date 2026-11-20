@@ -69,7 +69,7 @@ jest.mock('@react-native-async-storage/async-storage', () => {
   };
 });
 
-type HistoryModule = typeof import('../src/lib/history');
+type HistoryModule = typeof import('@/data/history');
 type Storage = { __reset: () => void; __seed: (k: string, v: string) => void };
 
 function loadHistory(seed?: unknown[]): HistoryModule {
@@ -80,7 +80,7 @@ function loadHistory(seed?: unknown[]): HistoryModule {
   storage.__reset();
   if (seed) storage.__seed('history.v1', JSON.stringify(seed));
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  return require('../src/lib/history') as HistoryModule;
+  return require('@/data/history') as HistoryModule;
 }
 
 function entry(id: string, ageMs = 0, status: 'analyzing' | 'done' | 'failed' = 'done') {

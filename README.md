@@ -109,9 +109,14 @@ src/app/                  页面(Expo Router,文件即路由)
   settings.tsx            设置
   history.tsx             拍照历史
 src/components/           建议卡片 / 水平仪 / 闪光灯按钮 / 专业参数面板
-src/hooks/                相机权限、水平仪、朝向
-src/lib/                  设置、密钥、DeepSeek 客户端、图像处理、历史、设计 token
-scripts/                  构建脚本(build.sh / release.sh,可移植)
+src/hooks/                交互与副作用:相机会话、分析循环、拍照链路、定时、手势
+src/domain/               领域规则(纯函数,不碰 IO)
+  guidance/               建议与点评:prompt、评分归一化、调度、统计
+  shared/                 领域模型与类型
+src/data/                 持久化:设置、密钥、历史、内存态
+src/infra/                外部适配器:相机模块门面、DeepSeek 客户端、图片、相册
+src/theme.ts              设计 token(唯一事实来源)
+scripts/                  构建脚本(build.sh / release.sh / dev-build.sh,可移植)
 modules/camera2/          ★ 自研相机(本地 Expo Module):预览/拍照/参数/方向
 __tests__/                JS 单元测试(含 JS↔原生契约)
 docs/REGRESSION.md        真机回归清单

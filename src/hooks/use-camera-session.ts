@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { ProSelection } from '@/components/pro-camera-panel';
-import type { PhotoMeta } from '@/lib/exif';
+import type { PhotoMeta } from '@/domain/shared/exif';
 import {
   addErrorListener,
   addParamsListener,
@@ -17,8 +17,8 @@ import {
   type Camera2CapsFull,
   type Camera2Params,
   type FlashMode,
-} from '@/lib/native-camera2';
-import type { AdjustParams } from '@/lib/types';
+} from '@/infra/camera/native-camera2';
+import type { AdjustParams } from '@/domain/shared/types';
 
 /** 抓帧失败的重试次数:相机刚恢复的前几百毫秒可能还没有画面 */
 const GRAB_ATTEMPTS = 3;

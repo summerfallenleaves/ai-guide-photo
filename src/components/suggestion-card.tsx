@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { palette, radius, spacing, type, weight } from '@/lib/theme';
-import type { LiveSuggestion } from '@/lib/types';
+import { palette, radius, spacing, type, weight } from '@/theme';
+import type { LiveSuggestion } from '@/domain/shared/types';
 
 type Props = {
   suggestion: LiveSuggestion | null;

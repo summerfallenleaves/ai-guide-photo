@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import { addVolumeKeyListener } from '@/lib/native-camera2';
+import { addVolumeKeyListener } from '@/infra/camera/native-camera2';
 
 export type ShutterTimer = {
   /** 定时器档位:0 = 关闭,3 / 10 秒 */

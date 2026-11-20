@@ -4,7 +4,7 @@ jest.mock('expo-image-manipulator', () => ({}));
 function normalize(payload: Record<string, unknown>, isCapture = false) {
   jest.resetModules();
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const mod = require('../src/lib/deepseek') as typeof import('../src/lib/deepseek');
+  const mod = require('@/domain/guidance/scoring') as typeof import('@/domain/guidance/scoring');
   return mod.__normalize(payload, isCapture);
 }
 

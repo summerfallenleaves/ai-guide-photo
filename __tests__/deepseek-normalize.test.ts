@@ -8,12 +8,12 @@
 jest.mock('expo-file-system', () => ({}));
 jest.mock('expo-image-manipulator', () => ({}));
 
-type DeepSeekModule = typeof import('../src/lib/deepseek');
+type DeepSeekModule = typeof import('@/infra/ai/client');
 
 function load(): DeepSeekModule {
   jest.resetModules();
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  return require('../src/lib/deepseek') as DeepSeekModule;
+  return require('@/domain/guidance/scoring') as DeepSeekModule;
 }
 
 function capture(payload: Record<string, unknown>) {

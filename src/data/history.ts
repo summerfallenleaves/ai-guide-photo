@@ -2,8 +2,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Directory, File, Paths } from 'expo-file-system';
 import { useSyncExternalStore } from 'react';
 
-import type { PhotoMeta } from './exif';
-import type { CaptureResult } from './types';
+import type { PhotoMeta } from '@/domain/shared/exif';
+import type { CaptureResult } from '@/domain/shared/types';
 
 const STORAGE_KEY = 'history.v1';
 /** 只保留最近多少天(按自然日算) */

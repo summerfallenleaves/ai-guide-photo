@@ -11,20 +11,51 @@
 
 ```mermaid
 flowchart TD
-    UI["界面层 · 页面与组件"] -->|调用| Hooks["hooks · 交互与副作用"]
-    Hooks -->|调用| Lib["lib · 纯逻辑与 IO"]
-    Lib -->|调用| Native["modules camera2 · Kotlin"]
+    UI["表现层 · 页面与组件"] -->|调用| Hooks["应用层 · hooks 时机与编排"]
+    Hooks -->|调用| Domain["领域层 · 规则(纯函数)"]
+    Hooks -->|调用| Data["数据层 · 持久化"]
+    Hooks -->|调用| Infra["基础设施层 · 相机 / 模型 / 文件"]
+    Infra -->|复用规则| Domain
+    Data -->|复用类型| Domain
+    Infra -->|调用| Native["modules camera2 · Kotlin"]
     Native -.->|事件通知| Hooks
 ```
 
-依赖只能向下。反过来的情况只有一种:原生用事件通知上层。
+依赖只能向下:表现 → 应用 → (领域 / 数据 / 基础设施) → 原生。
+反向只有一种:原生用事件通知上层。
+
+**一条硬边界:相机侧禁止依赖 AI。** 没有 API Key 时相机必须完全可用,
+所以 `use-camera-session` / `use-shutter-timer` / `use-preview-gestures` /
+`infra/camera` / `infra/media` 都不许 import `domain/guidance` 或 `infra/ai`。
+唯一例外是 `use-capture-flow`(拍完请求点评)。这条由 ESLint `no-restricted-imports` 强制。
+
+| 层 | 内容 | 职责 |
+| --- | --- | --- |
+| **表现层** | `src/app` `src/components` `src/theme.ts` | 只做组合与布局,不含业务判断 |
+| **应用层** | `src/hooks` | 管"什么时候做、做多久、什么时候停":副作用、定时、订阅、生命周期 |
+| | `use-live-analysis` | 分析循环:抓帧 → 调模型 → 失败暂停 → 定时器 |
+| | `use-voice-guide` | 播报,以及播报期间冻结建议 |
+| | `use-capture-flow` | 拍照 → 前置镜像 → 存相册 → 进复盘 → 后台点评 |
+| | `use-camera-session` | 订阅原生事件、缓存能力、下发参数 |
+| | `use-shutter-timer` | 定时快门(关 / 3s / 10s + 音量键) |
+| | `use-preview-gestures` | 捏合缩放 + 点按对焦 |
+| **领域层** | `src/domain/guidance` | `prompt` · 建议与点评怎么问 | 
+| | | `scoring` · 模型输出怎么清洗、verdict 与分数如何自洽 |
+| | | `live-analysis-policy` · 能不能跑 / 失败怎么算 / 间隔取多少 |
+| | | `history-stats` · 平均分 / 趋势 / 通病维度 |
+| | `src/domain/shared` | `types` 领域模型 · `exif` 光学参数 |
+| **数据层** | `src/data` | `settings` `secure-key` `history` `capture-store` |
+| **基础设施层** | `src/infra/ai` | `client` DeepSeek 传输与报错分类;`index` 对外门面 `analyze()` |
+| | `src/infra/camera` | `native-camera2` JS 门面 + 模块缺失时优雅降级 |
+| | `src/infra` | `media` 存相册 · `analysis-image` 缩图与前置镜像 |
+| **原生层** | `modules/camera2` | `Camera2Module` 接口与事件 · `Camera2View` 预览抓帧 · `Camera2Engine` 会话拍照参数 · `Camera2Math` 纯计算 |
 
 | 层 | 内容 | 职责 |
 | --- | --- | --- |
 | 界面层 | `src/app` `src/components` | 只做组合与布局,不含业务判断 |
 | hooks | `use-live-analysis` | 分析循环:抓帧 → 调模型 → 失败暂停 → 定时器 |
 | | `use-voice-guide` | 播报,以及播报期间冻结建议 |
-| | `use-capture-flow` | 拍照 → 裁切 → 存相册 → 进复盘 → 后台点评 |
+| | `use-capture-flow` | 拍照 → 前置镜像 → 存相册 → 进复盘 → 后台点评 |
 | | `use-shutter-timer` | 定时快门(关 / 3s / 10s) |
 | | `use-preview-gestures` | 捏合缩放 + 点按对焦 |
 | | `use-tilt` `use-api-key` `use-camera-permission` | 环境类 |
@@ -119,11 +150,11 @@ sequenceDiagram
 
 | 数据 | 存在哪 | 写入 | 读取 |
 | --- | --- | --- | --- |
-| 用户设置(快速模式 / 自动分析 / 间隔 / 语音 / 参数建议) | AsyncStorage | `settings.ts` | `useSettings()` 全局订阅 |
-| API Key | SecureStore(系统密钥库) | `secure-key.ts` | `useApiKey()` |
-| 刚拍的照片 + 点评状态 + 待应用参数 | 内存 | `capture-store.ts` | 复盘页、相机页 |
-| 拍照历史(含照片文件) | AsyncStorage + 文档目录 | `history.ts` | `useHistory()` |
-| 历史统计 | 派生(每次渲染现算) | — | `computeHistoryStats()` |
+| 用户设置(快速模式 / 自动分析 / 间隔 / 语音 / 参数建议) | AsyncStorage | `data/settings` | `useSettings()` 全局订阅 |
+| API Key | SecureStore(系统密钥库) | `data/secure-key` | `useApiKey()` |
+| 刚拍的照片 + 点评状态 + 待应用参数 | 内存 | `data/capture-store` | 复盘页、相机页 |
+| 拍照历史(含照片文件) | AsyncStorage + 文档目录 | `data/history` | `useHistory()` |
+| 历史统计 | 派生(每次渲染现算) | — | `domain/guidance/history-stats` 的 `computeHistoryStats()` |
 | 实时 ISO / 快门 / 对焦 | 内存(原生事件推送) | 分析循环取 meta 时 | 相机页顶栏、prompt |
 | 相机硬件能力 | 内存(就绪后取一次) | `getCapabilities()` | 变焦上限、闪光灯、参数档位 |
 

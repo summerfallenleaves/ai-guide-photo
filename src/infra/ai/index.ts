@@ -1,7 +1,7 @@
-import { askDeepSeek, DeepSeekError, DEFAULT_ENDPOINT, type CameraLimits, type Thinking } from './deepseek';
-import type { PhotoMeta } from './exif';
-import { getCachedApiKey } from './secure-key';
-import type { AnalysisResult } from './types';
+import { askDeepSeek, DeepSeekError, DEFAULT_ENDPOINT, type CameraLimits, type Thinking } from '@/infra/ai/client';
+import type { PhotoMeta } from '@/domain/shared/exif';
+import { getCachedApiKey } from '@/data/secure-key';
+import type { AnalysisResult } from '@/domain/shared/types';
 
 export { DeepSeekError, DEFAULT_ENDPOINT };
 

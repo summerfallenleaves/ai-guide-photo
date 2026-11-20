@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { analyze } from '@/lib/api';
-import type { CameraLimits } from '@/lib/deepseek';
-import type { PhotoMeta } from '@/lib/exif';
+import { analyze } from '@/infra/ai';
+import type { CameraLimits } from '@/infra/ai/client';
+import type { PhotoMeta } from '@/domain/shared/exif';
 import {
   analysisTickMs,
   canRunAnalysis,
   onAnalysisFailure,
   shouldScheduleAnalysis,
   type AnalyzeGate,
-} from '@/lib/live-analysis-policy';
-import type { LiveSuggestion } from '@/lib/types';
+} from '@/domain/guidance/live-analysis-policy';
+import type { LiveSuggestion } from '@/domain/shared/types';
 
 /** 语音模式下定时器的兜底周期:真正的节奏由播报驱动 */
 const VOICE_FALLBACK_TICK_MS = 10000;

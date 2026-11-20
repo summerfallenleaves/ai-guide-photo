@@ -4,9 +4,9 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
-import { loadApiKey } from '@/lib/secure-key';
-import { loadSettings } from '@/lib/settings';
-import { palette } from '@/lib/theme';
+import { loadApiKey } from '@/data/secure-key';
+import { loadSettings } from '@/data/settings';
+import { palette } from '@/theme';
 
 export default function RootLayout() {
   useEffect(() => {

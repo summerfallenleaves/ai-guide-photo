@@ -1,5 +1,5 @@
-import type { HistoryEntry } from './history';
-import type { Dim } from './types';
+import type { HistoryEntry } from '@/data/history';
+import type { Dim } from '@/domain/shared/types';
 
 /**
  * 拍照历史的本地统计。

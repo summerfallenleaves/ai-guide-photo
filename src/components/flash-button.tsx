@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text } from 'react-native';
 
-import { palette, radius, type } from '@/lib/theme';
-import type { FlashMode } from '@/lib/native-camera2';
+import { palette, radius, type } from '@/theme';
+import type { FlashMode } from '@/infra/camera/native-camera2';
 
 const LABELS: Record<FlashMode, string> = { off: '关', auto: '自动', torch: '常亮' };
 

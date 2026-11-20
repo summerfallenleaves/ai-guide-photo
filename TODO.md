@@ -68,6 +68,15 @@
 
 ## 二、待做(功能)
 
+### [ ] 特性优先目录(待评估)
+- **现在**:按层组织(`app` / `hooks` / `domain` / `data` / `infra`),功能只有 2 个,够用
+- **什么时候该改成特性优先**(垂直切分:`features/capture` `features/guidance` `shared/`):
+  - 功能超过 5 个(比如加修图、图库、分享、批量点评)
+  - 同一份 `domain/guidance` 要被两三个不同入口复用
+  - 团队超过 2 人,各自负责不同功能
+- **为什么现在不改**:层被打破后每个 feature 内部又是三层;`shared/` 会变成新的杂物间
+- **迁移成本**:目录改动,逻辑不动,`tsc` 会把漏改抓出来
+
 ### [ ] 网格功能重做
 - **为什么删**:上一版网格按"屏幕比例"定位,改成 4:3 预览后就铺到了错误的位置
 - **怎么做**:画在 `previewRect` 之内(已有这个矩形),3×3 绝对定位,不依赖屏幕比例
@@ -116,6 +125,11 @@
 ---
 
 ## 三、已知限制 / 技术债
+
+### [x] 目录按五层重组(v0.0.6 之后)
+- `src/lib/` 拆成 `domain/`(规则)· `data/`(持久化)· `infra/`(适配器),`theme.ts` 提到 `src/`
+- `deepseek.ts` 430 行拆成 `domain/guidance/prompt.ts` + `scoring.ts` + `infra/ai/client.ts`
+- 新增 ESLint 边界规则:**相机侧禁止 import AI**(`no-restricted-imports`)
 
 ### [x] 裁切函数已删除
 - `cropToAspect` / `computeCropBox` 与 `__tests__/crop-geometry.test.ts` 一并删除

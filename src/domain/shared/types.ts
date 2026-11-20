@@ -61,3 +61,14 @@ export type CaptureResult = {
 };
 
 export type AnalysisResult = LiveSuggestion | CaptureResult;
+
+/** 一次分析的结果:取景建议或拍后点评 */
+export type AnalyzeOutcome = LiveSuggestion | CaptureResult;
+
+/** 相机硬件可调范围,用来约束模型给出的参数 */
+export type CameraLimits = {
+  isoMin: number;
+  isoMax: number;
+  exposureMinNs: number;
+  exposureMaxNs: number;
+};

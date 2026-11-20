@@ -12,11 +12,11 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { getLastCapture, getReviewState, setPendingAdjust, subscribeReviewState } from '@/lib/capture-store';
-import { formatMeta } from '@/lib/exif';
-import { formatShutterNs, parseShutterToNs } from '@/lib/native-camera2';
-import { saveToAlbum } from '@/lib/media';
-import { palette, radius, spacing, type, weight } from '@/lib/theme';
+import { getLastCapture, getReviewState, setPendingAdjust, subscribeReviewState } from '@/data/capture-store';
+import { formatMeta } from '@/domain/shared/exif';
+import { formatShutterNs, parseShutterToNs } from '@/infra/camera/native-camera2';
+import { saveToAlbum } from '@/infra/media';
+import { palette, radius, spacing, type, weight } from '@/theme';
 
 export default function ReviewScreen() {
   const params = useLocalSearchParams<{ uri?: string; saved?: string }>();
