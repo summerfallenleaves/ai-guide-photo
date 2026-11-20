@@ -87,8 +87,6 @@ class Camera2Engine(
   var previewSize: Size? = null
     private set
 
-  /** 拍照流尺寸,用来算统一的裁切区域(必须和预览流取同一块传感器) */
-  private var captureSize: Size? = null
 
   private var facing: Int = CameraCharacteristics.LENS_FACING_BACK
 
@@ -163,7 +161,6 @@ class Camera2Engine(
           ?: run { onError("拿不到相机配置"); return@post }
 
         val (chosenCapture, preview) = chooseSizes(map, viewWidth, viewHeight)
-        captureSize = chosenCapture
         previewSize = preview
         surfaceTexture.setDefaultBufferSize(preview.width, preview.height)
         previewSurface = Surface(surfaceTexture)
@@ -276,7 +273,7 @@ class Camera2Engine(
     val active = characteristics?.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE)
     val targetW = active?.width() ?: viewWidth
     val targetH = active?.height() ?: viewHeight
-    val capture = CameraMath.closestAspect(targetW, targetH, jpegPairs)
+    val capture = CameraMath.captureFor(targetW, targetH, jpegPairs)
       ?: jpegPairs.maxByOrNull { it.first }!!
     val preview = CameraMath.previewFor(capture.first, capture.second, texturePairs) ?: capture
 
@@ -356,18 +353,13 @@ class Camera2Engine(
    */
   private fun cropRegion(): Rect? {
     val active = characteristics?.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE) ?: return null
-    val size = captureSize ?: return null
-    if (size.width <= 0 || size.height <= 0) return null
-
-    // 流本身就是原生比例,所以裁切区域直接用 activeArray,
-    // 只在变焦时等比收缩 —— 不做任何比例变换。
-    var w = active.width()
-    var h = active.height()
-    w = (w / zoomRatio).toInt().coerceAtLeast(1)
-    h = (h / zoomRatio).toInt().coerceAtLeast(1)
-    val cx = active.centerX()
-    val cy = active.centerY()
-    return Rect(cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2)
+    val region = CameraMath.zoomCrop(active.width(), active.height(), zoomRatio)
+    return Rect(
+      region.left,
+      region.top,
+      region.left + region.width,
+      region.top + region.height,
+    )
   }
 
   /** 逐轴设置手动参数;设备不支持的轴自动跳过,不影响其他轴 */

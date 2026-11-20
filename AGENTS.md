@@ -409,6 +409,9 @@ modules/camera2/                       本地 Expo Module(已入版本控制)
 - **预览流和拍照流都用传感器原生比例(4:3)**,`chooseSizes` 按 `activeArray` 选,不按屏幕比例
 - 预览按 **contain** 完整显示,取景范围由 JS 布局决定(容器做成同比例,`scale` 恒为 1)
 - **照片不裁切**:4080×3072 全画幅,所见即所得由"两条流同比例 + 都不裁"保证
+- 裁切相关代码(`cropToAspect` / `computeCropBox` / `crop-geometry.test.ts`)已删除,
+  需要时 `git show v0.0.5:src/lib/analysis-image.ts`
+- 选流与裁切区域已抽成纯函数 `CameraMath.captureFor` / `CameraMath.zoomCrop`,**有 Kotlin 测试**
 
 > ⚠️ **为什么不能请求 20:9 这类非原生比例的流**(踩过三轮坑,结论写在这里):
 > 传感器是 4:3,要变成 20:9 必须由 HAL 决定"裁哪一块"或"怎么拉伸",**各厂实现不同**。
@@ -527,6 +530,10 @@ npm run test:all           # 两者都跑
 
 Kotlin 测试源码放在 `modules/camera2/android/src/test/`,直接跑
 `scripts/build.sh :aiguide-camera2:test`(工程名来自 autolinking)。
+
+**相机尺寸选择与裁切区域必须有 Kotlin 测试**(`CameraMath.captureFor` / `zoomCrop`):
+这两条公式决定"预览和照片是否一致",而错了只能靠真机对比发现 ——
+2026-11 那轮因为没有测试,在错误方向上改了三次原生代码才定位到根因。
 
 ---
 

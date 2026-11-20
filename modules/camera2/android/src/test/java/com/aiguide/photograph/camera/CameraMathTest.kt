@@ -2,6 +2,7 @@ package com.aiguide.photograph.camera
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -73,5 +74,89 @@ class CameraMathTest {
     val previews = listOf(3840 to 2160, 1920 to 1080, 1280 to 720, 640 to 480)
     val picked = CameraMath.previewFor(3840, 2160, previews)
     assertEquals(1920 to 1080, picked)
+  }
+
+  // ---------- 选流:必须按传感器原生比例 ----------
+
+  @Test
+  fun `拍照流按传感器比例选,同比例取像素最多的`() {
+    // 这台设备:active 4080x3072(4:3),候选里既有 4:3 也有 20:9
+    val picked = CameraMath.captureFor(
+      activeWidth = 4080,
+      activeHeight = 3072,
+      candidates = listOf(4080 to 1836, 4000 to 3000, 4080 to 3072, 2400 to 1080),
+    )
+    assertEquals(4080 to 3072, picked)
+  }
+
+  @Test
+  fun `拍照流遇到更小的同比例候选时仍取最大的`() {
+    val picked = CameraMath.captureFor(
+      activeWidth = 4000,
+      activeHeight = 3000,
+      candidates = listOf(1600 to 1200, 4000 to 3000, 4032 to 3024),
+    )
+    // 4032x3024 与 4000x3000 同为 4:3,取面积最大的
+    assertEquals(4032 to 3024, picked)
+  }
+
+  @Test
+  fun `没有同比例候选时退到最接近的比例`() {
+    val picked = CameraMath.captureFor(
+      activeWidth = 4080,
+      activeHeight = 3072,
+      candidates = listOf(4080 to 1836, 1920 to 1080),
+    )
+    // 两者都远离 4:3,取更接近的 16:9 小尺寸
+    assertEquals(1920 to 1080, picked)
+  }
+
+  @Test
+  fun `拍照流候选为空时返回 null`() {
+    assertNull(CameraMath.captureFor(4080, 3072, emptyList()))
+  }
+
+  // ---------- 裁切区域:只缩放,不换比例 ----------
+
+  @Test
+  fun `1x 时裁切区域等于整块传感器`() {
+    val crop = CameraMath.zoomCrop(4080, 3072, 1f)
+    assertEquals(CameraMath.CropRegion(0, 0, 4080, 3072), crop)
+  }
+
+  @Test
+  fun `2x 时裁切区域是中心一半`() {
+    val crop = CameraMath.zoomCrop(4080, 3072, 2f)
+    assertEquals(CameraMath.CropRegion(1020, 768, 2040, 1536), crop)
+  }
+
+  @Test
+  fun `1_5x 时裁切区域居中且比例不变`() {
+    val crop = CameraMath.zoomCrop(4080, 3072, 1.5f)
+    assertEquals(2720, crop.width)
+    assertEquals(2048, crop.height)
+    // 比例必须和传感器一致,否则画会变形
+    assertEquals(
+      CameraMath.ratioOf(4080, 3072),
+      CameraMath.ratioOf(crop.width, crop.height),
+      0.01f,
+    )
+  }
+
+  @Test
+  fun `非法 zoom 一律当 1x,保证永远有画面`() {
+    assertEquals(CameraMath.CropRegion(0, 0, 4080, 3072), CameraMath.zoomCrop(4080, 3072, 0.5f))
+    assertEquals(CameraMath.CropRegion(0, 0, 4080, 3072), CameraMath.zoomCrop(4080, 3072, 0f))
+    assertEquals(CameraMath.CropRegion(0, 0, 4080, 3072), CameraMath.zoomCrop(4080, 3072, Float.NaN))
+  }
+
+  @Test
+  fun `极大变焦时裁切区域不会退化成 0`() {
+    val crop = CameraMath.zoomCrop(4080, 3072, 1000f)
+    // 只要 ≥1 即可:0 会让 createCaptureRequest 抛异常
+    assertTrue(crop.width >= 1)
+    assertTrue(crop.height >= 1)
+    assertTrue(crop.width <= 4080)
+    assertTrue(crop.height <= 3072)
   }
 }

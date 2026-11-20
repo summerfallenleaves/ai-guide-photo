@@ -107,10 +107,9 @@
 
 ## 三、已知限制 / 技术债
 
-### [ ] 裁切函数已无调用方
-- `cropToAspect` / `computeCropBox` 在 4:3 方案后不再被调用
-- 保留原因:语义有 7 个单测锁着,将来做「满屏模式」可以直接复用
-- 若长期不用,应删掉以免误导(删之前把测试一并处理)
+### [x] 裁切函数已删除
+- `cropToAspect` / `computeCropBox` 与 `__tests__/crop-geometry.test.ts` 一并删除
+- 4:3 结论:`cropToAspect` / `computeCropBox` 已从 `analysis-image.ts` 移除,见 v0.0.5 标签下历史
 
 ### [ ] 多机型验证(只测过一台)
 - 4:3 方案理论上跨机型安全(不依赖 HAL 特殊行为),但**只在 Xiaomi 那一台上验证过**
