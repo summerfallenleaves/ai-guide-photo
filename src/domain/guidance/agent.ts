@@ -1,6 +1,7 @@
 import type { Advice } from '@/domain/guidance/continuity';
+import { SCENES } from '@/domain/guidance/scenes';
 import { DIM_LABELS } from '@/domain/guidance/scoring';
-import type { Dim } from '@/domain/shared/types';
+import type { Dim, SceneId } from '@/domain/shared/types';
 
 /**
  * 取景 Agent 的决策内核。
@@ -60,7 +61,9 @@ export type SessionEvent =
   | { type: 'RESUME' }
   | { type: 'TICK' }
   | { type: 'CANCEL' }
-  | { type: 'GUARD'; autoCapture: boolean; blocked: boolean };
+  | { type: 'GUARD'; autoCapture: boolean; blocked: boolean }
+  /** 换了场景:标准变了,连续 ready 必须重新攒;历史不动 */
+  | { type: 'RESET_READY' };
 
 /** 决定"能不能真正按快门"的外部条件 */
 export type CaptureGuard = {
@@ -164,6 +167,18 @@ export function reduce(state: SessionState, event: SessionEvent): ReduceResult {
       return { state: base, capture: false };
     }
 
+    case 'RESET_READY':
+      return {
+        state: {
+          ...state,
+          readyStreak: 0,
+          // 倒计时中换场景:取消这次拍摄
+          phase: state.phase === 'counting' ? 'observing' : state.phase,
+          countdown: 0,
+        },
+        capture: false,
+      };
+
     case 'GUARD':
       return {
         state: { ...state, guard: { autoCapture: event.autoCapture, blocked: event.blocked } },
@@ -198,14 +213,14 @@ export function isSessionActive(state: SessionState): boolean {
 export function adviceDigest(advice: Advice[], max = 8): string | null {
   if (advice.length === 0) return null;
 
-  type Line = { dim: string; action: string; repeat: number };
+  type Line = { dim: string; action: string; repeat: number; scene?: SceneId };
   const merged: Line[] = [];
   for (const item of advice) {
     const last = merged[merged.length - 1];
-    if (last && last.action === item.action) {
+    if (last && last.action === item.action && last.scene === item.scene) {
       last.repeat += 1;
     } else {
-      merged.push({ dim: item.dim, action: item.action, repeat: 1 });
+      merged.push({ dim: item.dim, action: item.action, repeat: 1, scene: item.scene });
     }
   }
 
@@ -214,10 +229,24 @@ export function adviceDigest(advice: Advice[], max = 8): string | null {
     picked = [...merged.slice(0, 2), ...merged.slice(-(max - 2))];
   }
 
-  const lines = picked.map((line, index) => {
+  // 用户中途换过场景时插一行标记:
+  // 否则复盘会拿"最终场景"的标准去评价另一个场景下给的建议
+  const rows: string[] = [];
+  let counter = 0;
+  let previousScene: SceneId | undefined;
+  for (const line of picked) {
+    if (line.scene !== previousScene) {
+      if (previousScene !== undefined && line.scene) {
+        const from = SCENES[previousScene]?.label ?? previousScene;
+        const to = SCENES[line.scene]?.label ?? line.scene;
+        rows.push(`—— 场景切换到「${to}」(之前是「${from}」)——`);
+      }
+      previousScene = line.scene;
+    }
+    counter += 1;
     const suffix = line.repeat > 1 ? `(同一建议第 ${line.repeat} 次)` : '';
-    return `${index + 1}. [${DIM_LABELS[line.dim as Dim] ?? line.dim}] ${line.action}${suffix}`;
-  });
+    rows.push(`${counter}. [${DIM_LABELS[line.dim as Dim] ?? line.dim}] ${line.action}${suffix}`);
+  }
 
-  return `本次取景共 ${advice.length} 轮建议,用户按此取景后拍摄:\n${lines.join('\n')}`;
+  return `本次取景共 ${advice.length} 轮建议,用户按此取景后拍摄:\n${rows.join('\n')}`;
 }

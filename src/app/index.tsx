@@ -33,9 +33,10 @@ import { useVoiceGuide } from '@/hooks/use-voice-guide';
 import { useApiKey } from '@/hooks/use-api-key';
 import { useCameraPermission } from '@/hooks/use-camera-permission';
 import { useCameraSession } from '@/hooks/use-camera-session';
+import type { SceneId } from '@/domain/shared/types';
 import type { Camera2Params } from '@/infra/camera/native-camera2';
 import { Camera2Preview } from '@/infra/camera/native-camera2';
-import { thinkingOf, useSettings } from '@/data/settings';
+import { thinkingOf, updateSettings, useSettings } from '@/data/settings';
 import { palette, radius, spacing, tabularNums, type, weight } from '@/theme';
 
 
@@ -158,6 +159,7 @@ export default function CameraScreen() {
     apiEndpoint: settings.apiEndpoint,
     autoCapture: settings.autoCapture,
     aiParams: settings.aiParams,
+    scene: settings.scene,
     getParams: session.paramsSnapshot,
     applyParams: session.applyAgentParams,
     isUserManual: session.isUserManual,
@@ -181,6 +183,18 @@ export default function CameraScreen() {
   const { retry: retryLive, clearError, reportError } = live;
 
   const { stop: stopSessionRaw, cancel: cancelCountdown } = live;
+
+  /**
+   * 换场景:标准变了,所以把"连续 ready"和重复计数清零,
+   * 但保留建议历史 —— 复盘摘要仍然需要它。
+   */
+  const changeScene = useCallback(
+    (next: SceneId) => {
+      updateSettings({ scene: next });
+      live.resetAfterSceneChange();
+    },
+    [live],
+  );
 
   /** 会话开始前的相机参数,结束时恢复(免得拍完停在被调过的状态) */
   const baseParamsRef = useRef<Camera2Params | null>(null);
@@ -302,6 +316,7 @@ export default function CameraScreen() {
         : undefined,
     getLastSuggestion: () => lastSuggestionRef.current,
     getSessionAdvice: live.digest,
+    getScene: () => settings.scene,
     onError: reportError,
     flash,
   });
@@ -465,6 +480,8 @@ export default function CameraScreen() {
               sessionActive={live.active}
               paused={live.paused}
               appliedNote={live.appliedNote}
+              scene={settings.scene}
+              onSceneChange={changeScene}
               onStart={startSession}
               onStop={stopSession}
               onOpenSettings={() => router.push('/settings')}

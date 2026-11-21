@@ -14,7 +14,7 @@ import {
 import type { Advice } from '@/domain/guidance/continuity';
 import { nextRepeat } from '@/domain/guidance/continuity';
 import { appendAdvice } from '@/domain/guidance/agent';
-import type { AdjustParams, LiveSuggestion } from '@/domain/shared/types';
+import type { AdjustParams, LiveSuggestion, SceneId } from '@/domain/shared/types';
 import {
   decideAgentParams,
   describeApplied,
@@ -42,6 +42,8 @@ export type LiveSessionDeps = {
   autoCapture: boolean;
   /** 设置里的「AI 调参」开关 */
   aiParams: boolean;
+  /** 当前场景(决定用哪套标准) */
+  scene: SceneId;
   /** 当前相机参数(给护栏判断变化够不够大) */
   getParams: () => ParamSnapshot | null;
   /** 把参数下发给相机 */
@@ -83,6 +85,8 @@ export type LiveSession = {
   shouldTick: boolean;
   /** 立刻跑一轮(语音播报结束后补跑用,不会解除暂停) */
   tick: () => void;
+  /** 换场景:清"连续 ready"和重复计数,保留建议历史 */
+  resetAfterSceneChange: () => void;
 };
 
 /**
@@ -153,6 +157,7 @@ export function useLiveSession(deps: LiveSessionDeps): LiveSession {
         meta: d.meta(),
         limits: d.limits(),
         previousAdvice: previous ? { advice: previous, repeat: repeatRef.current } : null,
+        scene: d.scene,
       });
 
       if (result.mode === 'live') {
@@ -181,6 +186,7 @@ export function useLiveSession(deps: LiveSessionDeps): LiveSession {
           headline: result.headline,
           action: result.action,
           dim: result.dim,
+          scene: d.scene,
         });
         send({ type: 'ROUND_OK', readyToShoot: result.readyToShoot === true });
       }
@@ -251,6 +257,10 @@ export function useLiveSession(deps: LiveSessionDeps): LiveSession {
   }, [run, send]);
 
   const tick = useCallback(() => void run(), [run]);
+  const resetAfterSceneChange = useCallback(() => {
+    repeatRef.current = 1;
+    send({ type: 'RESET_READY' });
+  }, [send]);
   const clearError = useCallback(() => setError(null), []);
   const reportError = useCallback((message: string) => setError(message), []);
   const getLastRunAt = useCallback(() => lastRunAtRef.current, []);
@@ -275,7 +285,8 @@ export function useLiveSession(deps: LiveSessionDeps): LiveSession {
       getLastRunAt,
       shouldTick,
       tick,
+      resetAfterSceneChange,
     }),
-    [state, suggestion, analyzing, error, appliedNote, digest, start, stop, cancel, retry, clearError, reportError, getLastRunAt, shouldTick, tick],
+    [state, suggestion, analyzing, error, appliedNote, digest, start, stop, cancel, retry, clearError, reportError, getLastRunAt, shouldTick, tick, resetAfterSceneChange],
   );
 }

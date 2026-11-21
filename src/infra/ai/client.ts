@@ -5,20 +5,11 @@
  * **规则不在这里** —— prompt 在 `domain/guidance/prompt.ts`,
  * 返回内容的清洗在 `domain/guidance/scoring.ts`。
  */
-import { continuityNote, type Advice } from '@/domain/guidance/continuity';
-import {
-  CAPTURE_PROMPT,
-  LIVE_PROMPT,
-  SYSTEM_PROMPT,
-  withLastSuggestion,
-  withSessionHistory,
-  withPreviousAdvice,
-  withLimits,
-  withMeta,
-} from '@/domain/guidance/prompt';
+import { SYSTEM_PROMPT, composeAnalysisPrompt } from '@/domain/guidance/prompt';
 import { __normalize, parseJsonLoose } from '@/domain/guidance/scoring';
 import type { PhotoMeta } from '@/domain/shared/exif';
-import type { AnalyzeOutcome, CameraLimits } from '@/domain/shared/types';
+import type { Advice } from '@/domain/guidance/continuity';
+import type { AnalyzeOutcome, CameraLimits, SceneId } from '@/domain/shared/types';
 
 export type { CameraLimits };
 
@@ -49,6 +40,10 @@ export type AskOptions = {
   previousAdvice?: { advice: Advice; repeat: number } | null;
   /** 整个取景会话的建议摘要,点评时用来对照 */
   sessionAdvice?: string | null;
+  /** 场景:决定用哪一套标准与 few-shot */
+  scene?: SceneId | null;
+  /** 复盘参考图(只用于 capture;取景不带图,保持 3 秒节奏) */
+  referenceImages?: { base64: string; caption: string }[] | null;
   apiKey: string;
   endpoint?: string;
   model?: string;
@@ -62,6 +57,13 @@ export async function askDeepSeek(opts: AskOptions): Promise<AnalyzeOutcome> {
   const model = opts.model || DEFAULT_MODEL;
   const timeoutMs = opts.timeoutMs ?? (isCapture ? 40000 : 20000);
 
+  // 参考图只在点评时带:每 3 秒一轮的取景带图会把延迟拖垮
+  const refs = isCapture ? (opts.referenceImages ?? []).filter((item) => item.base64) : [];
+  const referenceBlocks = refs.flatMap((item, index) => [
+    { type: 'text', text: `参考图 ${index + 1}:${item.caption}` },
+    { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${item.base64}`, detail: 'high' } },
+  ]);
+
   const body: Record<string, unknown> = {
     model,
     messages: [
@@ -71,21 +73,18 @@ export async function askDeepSeek(opts: AskOptions): Promise<AnalyzeOutcome> {
         content: [
           {
             type: 'text',
-            text: withLimits(
-              withSessionHistory(
-                withLastSuggestion(
-                  withPreviousAdvice(
-                    withMeta(isCapture ? CAPTURE_PROMPT : LIVE_PROMPT, opts.meta),
-                    // 只对取景建议做连续性;拍后点评是独立的一次判断
-                    isCapture ? null : continuityNote(opts.previousAdvice?.advice ?? null, opts.previousAdvice?.repeat ?? 1),
-                  ),
-                  isCapture ? opts.lastLiveSuggestion : null,
-                ),
-                isCapture ? opts.sessionAdvice ?? null : null,
-              ),
-              isCapture ? opts.limits : undefined,
-            ),
+            text: composeAnalysisPrompt({
+              mode: isCapture ? 'capture' : 'live',
+              meta: opts.meta,
+              scene: opts.scene,
+              previousAdvice: opts.previousAdvice,
+              lastLiveSuggestion: opts.lastLiveSuggestion,
+              sessionAdvice: opts.sessionAdvice,
+              limits: isCapture ? opts.limits : undefined,
+              hasReferences: refs.length > 0,
+            }),
           },
+          ...referenceBlocks,
           {
             type: 'image_url',
             image_url: { url: `data:image/jpeg;base64,${opts.imageBase64}`, detail: 'high' },

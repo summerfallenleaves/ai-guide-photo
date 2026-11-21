@@ -5,7 +5,9 @@
  * 一次只给一条、动作要可执行、好照片不硬找茬、参数正常就别提。
  */
 import { describeMeta, type PhotoMeta } from '@/domain/shared/exif';
-import type { CameraLimits } from '@/domain/shared/types';
+import type { CameraLimits, SceneId } from '@/domain/shared/types';
+import { getScene, type SceneGuide } from '@/domain/guidance/scenes';
+import { continuityNote } from '@/domain/guidance/continuity';
 
 export const SYSTEM_PROMPT =
   '你是一位资深手机摄影指导,擅长把复杂的摄影原理翻译成普通人马上能做到的一两个动作。你只输出 JSON。';
@@ -119,6 +121,53 @@ ${digest}
 注意:只对与最终画面明显相关的建议做评价,不要硬扯;画面已经不错时不要为了呼应建议而挑毛病。`;
 }
 
+/**
+ * 把场景知识拼进 prompt(取景与点评共用)。
+ *
+ * 只拼**当前场景**那一块 —— 把五个场景都塞进去是最常见的错误:
+ * 既浪费 token,又会让模型在不同标准之间摇摆。
+ */
+export function withScene(base: string, scene: SceneId | SceneGuide | null | undefined): string {
+  const guide = typeof scene === 'object' && scene ? scene : getScene(scene as SceneId | null);
+  const rubric = guide.rubric.map((line) => `- ${line}`).join('\n');
+  const priority = guide.priority.map((item, index) => `${index + 1}. ${item}`).join(' ');
+  const examples = guide.examples
+    .map((item) => `- 画面:${item.see} → 建议:${item.advise}`)
+    .join('\n');
+
+  return `${base}
+
+【当前场景:${guide.label}】
+这个场景里"好"的照片是这样的:
+${rubric}
+
+判断优先级(第一条建议优先说排在前面的):${priority}
+
+示例(只是参考,**不要照抄措辞**,也不要逐条模仿):
+${examples}`;
+}
+
+/**
+ * 点评用的场景块:只给分数锚点,不掺取景的 few-shot
+ * (取景示例是"该怎么调",点评需要的是"做到什么程度算好")。
+ */
+export function withSceneScoring(base: string, scene: SceneId | SceneGuide | null | undefined): string {
+  const guide = typeof scene === 'object' && scene ? scene : getScene(scene as SceneId | null);
+  const rubric = guide.rubric.map((line) => `- ${line}`).join('\n');
+  return `${base}
+
+【本张照片按「${guide.label}」的标准点评】
+这个场景里"好"的照片是这样的:
+${rubric}
+
+分数参照:
+- 高分:${guide.scoring.high}
+- 中段:${guide.scoring.mid}
+- 低分:${guide.scoring.low}
+
+不要拿别的场景的标准来要求它(比如用"主体突出"去评价一张风光照)。`;
+}
+
 /** 把「上一轮说过什么」拼进取景 prompt(只用于 live) */
 export function withPreviousAdvice(base: string, note: string | null): string {
   if (!note) return base;
@@ -153,3 +202,63 @@ ${desc}
 请把它作为一条改进项明确写出来,并说明下次怎么调。参数正常就不要硬提。`;
 }
 
+/**
+ * 按模式拼出完整的分析 prompt。
+ *
+ * 原来这段拼装在 `infra/ai/client.ts` 里,只能靠"发请求"来验证。
+ * 抽成纯函数后可以直接断言:取景带什么、点评带什么、会不会串味。
+ */
+export type ComposeInput = {
+  mode: 'live' | 'capture';
+  meta?: PhotoMeta | null;
+  scene?: SceneId | null;
+  /** 取景:上一轮建议(连续性) */
+  previousAdvice?: {
+    advice: { headline: string; action: string; dim: string; scene?: SceneId };
+    repeat: number;
+  } | null;
+  /** 点评:快门前的最后一条建议 */
+  lastLiveSuggestion?: { headline: string; action: string } | null;
+  /** 点评:整段会话的摘要 */
+  sessionAdvice?: string | null;
+  /** 点评:硬件范围 */
+  limits?: CameraLimits;
+  /** 点评:是否附了参考图片(决定要不要加"如何用参考图"的说明) */
+  hasReferences?: boolean;
+};
+
+/** 附了参考图时补一段说明,避免模型让用户照抄 */
+export function withReferenceGuide(base: string): string {
+  return `${base}
+
+本次附了同场景的**参考照片**(标注了"这张为什么算好")。
+用法:
+- 只用它们来衡量"这个场景做到什么程度算好",判断用户这张的差距在哪。
+- **不要**建议用户模仿参考图的具体构图,也不要写"像参考图那样"这种话。
+- 参考图是别人拍的,不是用户的目标;用户想拍成什么样由他自己决定。`;
+}
+
+export function composeAnalysisPrompt(input: ComposeInput): string {
+  if (input.mode === 'capture') {
+    const base = withSceneScoring(
+      withLimits(
+        withSessionHistory(
+          withLastSuggestion(withMeta(CAPTURE_PROMPT, input.meta), input.lastLiveSuggestion),
+          input.sessionAdvice ?? null,
+        ),
+        input.limits,
+      ),
+      input.scene,
+    );
+    return input.hasReferences ? withReferenceGuide(base) : base;
+  }
+
+  return withScene(
+    withPreviousAdvice(
+      withMeta(LIVE_PROMPT, input.meta),
+      // 只对取景建议做连续性;拍后点评是独立的一次判断
+      continuityNote(input.previousAdvice?.advice ?? null, input.previousAdvice?.repeat ?? 1),
+    ),
+    input.scene,
+  );
+}

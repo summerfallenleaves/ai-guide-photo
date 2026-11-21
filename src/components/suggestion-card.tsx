@@ -1,7 +1,10 @@
+import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { palette, radius, spacing, type, weight } from '@/theme';
-import type { LiveSuggestion } from '@/domain/shared/types';
+import { SCENES } from '@/domain/guidance/scenes';
+import type { LiveSuggestion, SceneId } from '@/domain/shared/types';
+import { ScenePicker } from '@/components/scene-picker';
 
 type Props = {
   suggestion: LiveSuggestion | null;
@@ -17,6 +20,10 @@ type Props = {
   paused: boolean;
   /** 最近一次自动调参的说明,例如「已自动调 ISO 400 · 1/125s」 */
   appliedNote?: string | null;
+  /** 当前场景 */
+  scene: SceneId;
+  /** 切换场景 */
+  onSceneChange: (next: SceneId) => void;
   onRefresh: () => void;
   onOpenSettings: () => void;
   /** 横屏空间紧张时用:去掉理由行、压缩字号与留白 */
@@ -32,10 +39,13 @@ export function SuggestionCard({
   onStop,
   paused,
   appliedNote = null,
+  scene,
+  onSceneChange,
   onRefresh,
   onOpenSettings,
   compact = false,
 }: Props) {
+  const [sceneOpen, setSceneOpen] = useState(false);
   if (error) {
     return (
       <View style={[styles.card, compact && styles.cardCompact, styles.errorCard]}>
@@ -58,6 +68,8 @@ export function SuggestionCard({
     // 会话没开时,这个位置就是入口 —— 空态即按钮
     return (
       <View style={[styles.card, compact && styles.cardCompact]}>
+        <Text style={styles.sceneHint}>拍什么?选一个,建议会按对应标准来</Text>
+        <ScenePicker value={scene} onChange={onSceneChange} />
         <Pressable onPress={onStart} style={styles.startButton} hitSlop={6}>
           <Text style={styles.startText}>开始 AI 取景</Text>
         </Pressable>
@@ -90,6 +102,9 @@ export function SuggestionCard({
   return (
     <View style={[styles.card, compact && styles.cardCompact]}>
       <View style={styles.headerRow}>
+        <Pressable onPress={() => setSceneOpen((prev) => !prev)} hitSlop={6} style={styles.sceneTag}>
+          <Text style={styles.sceneTagText}>{SCENES[scene].label}</Text>
+        </Pressable>
         <View style={styles.dimTag}>
           <Text style={styles.dimText}>{suggestion.dimLabel}</Text>
         </View>
@@ -102,6 +117,8 @@ export function SuggestionCard({
           </Pressable>
         </View>
       </View>
+
+      {sceneOpen ? <ScenePicker value={scene} onChange={onSceneChange} compact /> : null}
 
       <Text style={[styles.headline, compact && styles.headlineCompact]}>{suggestion.headline}</Text>
       <Text style={[styles.action, compact && styles.actionCompact]}>{suggestion.action}</Text>
@@ -127,6 +144,19 @@ function ConfidenceDots({ value }: { value: number }) {
 }
 
 const styles = StyleSheet.create({
+  sceneHint: {
+    color: palette.textFaint,
+    fontSize: type.caption.fontSize,
+    marginBottom: spacing.sm,
+  },
+  sceneTag: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xxs,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: palette.border,
+  },
+  sceneTagText: { color: palette.textDim, fontSize: type.caption.fontSize, fontWeight: weight.medium },
   appliedNote: {
     color: palette.accent,
     fontSize: type.caption.fontSize,

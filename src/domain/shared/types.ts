@@ -1,3 +1,6 @@
+/** 拍摄场景:决定用哪一套取景标准与评分锚点 */
+export type SceneId = 'portrait' | 'landscape' | 'food' | 'street' | 'other';
+
 export type Dim = 'composition' | 'light' | 'pose' | 'background' | 'settings';
 
 export type Metrics = {

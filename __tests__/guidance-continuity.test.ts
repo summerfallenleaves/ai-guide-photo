@@ -52,6 +52,11 @@ describe('continuityNote', () => {
     expect(continuityNote(advice('抬高'), 4)).toContain('不要再说第 5 次');
   });
 
+  it('带上上一轮建议所属的场景', () => {
+    const note = continuityNote({ headline: '标题', action: '抬高', dim: 'composition', scene: 'portrait' }, 1)!;
+    expect(note).toContain('场景:人像');
+  });
+
   it('建议动作是空字符串时视为没有历史', () => {
     expect(continuityNote(advice(''), 1)).toBeNull();
   });

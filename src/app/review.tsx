@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getLastCapture, getReviewState, setPendingAdjust, subscribeReviewState } from '@/data/capture-store';
+import { SCENES } from '@/domain/guidance/scenes';
 import { formatMeta } from '@/domain/shared/exif';
 import { formatShutterNs, parseShutterToNs } from '@/infra/camera/native-camera2';
 import { saveToAlbum } from '@/infra/media';
@@ -110,6 +111,10 @@ export default function ReviewScreen() {
 
           {formatMeta(captured?.meta) ? (
             <Text style={styles.metaLine}>{formatMeta(captured?.meta)}</Text>
+          ) : null}
+
+          {captured?.scene ? (
+            <Text style={styles.sceneLine}>{`按「${SCENES[captured.scene]?.label ?? '其他'}」的标准点评`}</Text>
           ) : null}
 
           {saveError ? <Text style={styles.saveErrorText}>保存失败:{saveError}</Text> : null}
@@ -239,6 +244,11 @@ function describeParams(p: { iso?: number; shutter?: string; wb?: number; focusM
 }
 
 const styles = StyleSheet.create({
+  sceneLine: {
+    color: palette.textFaint,
+    fontSize: type.caption.fontSize,
+    marginTop: spacing.xxs,
+  },
   root: {
     flex: 1,
     backgroundColor: palette.bgElevated,

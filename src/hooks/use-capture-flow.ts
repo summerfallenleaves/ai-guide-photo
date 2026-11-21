@@ -1,3 +1,5 @@
+import type { SceneId } from '@/domain/shared/types';
+import { loadSceneReferences } from '@/infra/reference-images';
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -23,6 +25,8 @@ export type CaptureFlowDeps = {
   limits: () => CameraLimits | undefined;
   /** 整个取景会话的建议摘要,点评时用来对照(没有会话就是 null) */
   getSessionAdvice: () => string | null;
+  /** 当前场景:点评要按对应标准打分 */
+  getScene: () => SceneId;
   /** 快门前的最后一条建议,点评时用来对照"用户有没有照做" */
   getLastSuggestion: () => { headline: string; action: string } | null;
   onError: (message: string) => void;
@@ -130,12 +134,17 @@ export function useCaptureFlow(deps: CaptureFlowDeps): CaptureFlow {
           // 只给模型用的一份缩略图,不影响相册和复盘页显示的原图
           const base64 = await toAnalysisBase64(photoUri, 0, 0);
           if (mySeq !== reviewSeq.current) return;
+          // 同场景的参考图(2 张):只用来定义"这个场景做到什么算好"
+          const references = await loadSceneReferences(d.getScene());
+          if (mySeq !== reviewSeq.current) return;
           const result = await analyze(base64, 'capture', {
+            referenceImages: references,
             thinking: d.thinking,
             endpoint: d.apiEndpoint,
             meta: photoMeta,
             lastLiveSuggestion: lastSuggestion,
             sessionAdvice: d.getSessionAdvice(),
+            scene: d.getScene(),
             limits: d.limits(),
           });
           if (mySeq !== reviewSeq.current) return; // 已经又拍了一张,丢弃旧结果

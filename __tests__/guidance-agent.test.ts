@@ -195,6 +195,25 @@ describe('失败处理', () => {
 });
 
 describe('复盘摘要 adviceDigest', () => {
+  it('换场景时插入切换标记,且不合并不同场景的相同动作', () => {
+    const digest = adviceDigest([
+      { headline: 'a', action: '往左半步', dim: 'composition', scene: 'portrait' },
+      { headline: 'b', action: '往左半步', dim: 'composition', scene: 'landscape' },
+    ])!;
+    expect(digest).toContain('场景切换到「风光」');
+    expect(digest).toContain('之前是「人像」');
+    // 不同场景不算"同一建议重复"
+    expect(digest).not.toContain('同一建议第 2 次');
+  });
+
+  it('同一场景不插标记', () => {
+    const digest = adviceDigest([
+      { headline: 'a', action: '抬高', dim: 'composition', scene: 'portrait' },
+      { headline: 'b', action: '往左', dim: 'composition', scene: 'portrait' },
+    ])!;
+    expect(digest).not.toContain('场景切换');
+  });
+
   const a = (action: string, dim = 'composition') => ({ headline: '标题', action, dim });
 
   it('没有建议时返回 null', () => {

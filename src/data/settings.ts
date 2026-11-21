@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { SceneId } from '@/domain/shared/types';
 import { useSyncExternalStore } from 'react';
 
 export type Thinking = 'disabled' | 'high';
@@ -18,6 +19,8 @@ export type AppSettings = {
   autoCapture: boolean;
   /** 允许 Agent 直接把曝光/白平衡/对焦下发给相机 */
   aiParams: boolean;
+  /** 上次选的拍摄场景(下次打开还停在这里) */
+  scene: SceneId;
   /**
    * 语音播报取景建议。
    * **默认关闭** —— 户外/公共场合出声可能打扰别人,必须用户主动打开。
@@ -28,6 +31,11 @@ export type AppSettings = {
 export const INTERVAL_MIN = 3;
 export const INTERVAL_MAX = 10;
 
+const SCENE_IDS: SceneId[] = ['portrait', 'landscape', 'food', 'street', 'other'];
+function isSceneId(value: unknown): value is SceneId {
+  return typeof value === 'string' && (SCENE_IDS as string[]).includes(value);
+}
+
 export const DEFAULT_SETTINGS: AppSettings = {
   fastMode: true,
   intervalSec: 3,
@@ -36,6 +44,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   gridEnabled: true,
   autoCapture: true,
   aiParams: true,
+  scene: 'other',
   voiceGuide: false,
 };
 
@@ -90,6 +99,7 @@ function sanitize(input: Partial<AppSettings>): AppSettings {
     gridEnabled: typeof input.gridEnabled === 'boolean' ? input.gridEnabled : DEFAULT_SETTINGS.gridEnabled,
     autoCapture: typeof input.autoCapture === 'boolean' ? input.autoCapture : DEFAULT_SETTINGS.autoCapture,
     aiParams: typeof input.aiParams === 'boolean' ? input.aiParams : DEFAULT_SETTINGS.aiParams,
+    scene: isSceneId(input.scene) ? input.scene : DEFAULT_SETTINGS.scene,
   };
 }
 

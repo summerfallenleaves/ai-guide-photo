@@ -1,7 +1,7 @@
 import { askDeepSeek, DeepSeekError, DEFAULT_ENDPOINT, type CameraLimits, type Thinking } from '@/infra/ai/client';
 import type { PhotoMeta } from '@/domain/shared/exif';
 import { getCachedApiKey } from '@/data/secure-key';
-import type { AnalysisResult } from '@/domain/shared/types';
+import type { AnalysisResult, SceneId } from '@/domain/shared/types';
 
 export { DeepSeekError, DEFAULT_ENDPOINT };
 
@@ -15,6 +15,10 @@ export type AnalyzeOptions = {
   limits?: CameraLimits;
   /** 快门前的最后一条取景建议,让点评能对照"用户有没有照做" */
   lastLiveSuggestion?: { headline: string; action: string } | null;
+  /** 场景:决定 prompt 用哪套标准 */
+  scene?: SceneId | null;
+  /** 复盘参考图(仅点评) */
+  referenceImages?: { base64: string; caption: string }[] | null;
   /** 整个取景会话的建议摘要(点评用) */
   sessionAdvice?: string | null;
   /** 上一轮取景建议,用于保持建议的连续性 */
@@ -46,6 +50,8 @@ export async function analyze(
     lastLiveSuggestion: opts.lastLiveSuggestion,
     previousAdvice: opts.previousAdvice,
     sessionAdvice: opts.sessionAdvice,
+    scene: opts.scene,
+    referenceImages: opts.referenceImages,
     apiKey,
     endpoint: opts.endpoint,
     timeoutMs: opts.timeoutMs,

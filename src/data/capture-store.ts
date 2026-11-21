@@ -1,5 +1,5 @@
 import type { PhotoMeta } from '@/domain/shared/exif';
-import type { AdjustParams, CaptureResult } from '@/domain/shared/types';
+import type { AdjustParams, CaptureResult, SceneId } from '@/domain/shared/types';
 
 /**
  * 把"刚刚拍下的这张"存在内存里,跨页面读取。
@@ -15,6 +15,8 @@ export type LastCapture = {
   meta?: PhotoMeta | null;
   /** 按下快门前 AI 最后给的一条建议(可能没有:断网/关闭自动分析) */
   lastSuggestion?: { headline: string; action: string } | null;
+  /** 拍照时选的场景(复盘页用来显示"按什么标准点评") */
+  scene?: SceneId;
 };
 
 let last: LastCapture | null = null;

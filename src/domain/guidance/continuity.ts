@@ -1,3 +1,6 @@
+import { SCENES } from '@/domain/guidance/scenes';
+import type { SceneId } from '@/domain/shared/types';
+
 /**
  * 取景建议的连续性。
  *
@@ -14,6 +17,8 @@ export type Advice = {
   headline: string;
   action: string;
   dim: string;
+  /** 这条建议是在哪个场景标准下给的(用户中途换场景时用来标记) */
+  scene?: SceneId;
 };
 
 /**
@@ -39,7 +44,9 @@ export function nextRepeat(previous: Advice | null, nextAction: string): number 
 export function continuityNote(previous: Advice | null, repeat: number): string | null {
   if (!previous || !previous.action) return null;
 
-  const head = `上一轮你已经建议过:「${previous.action}」(维度:${previous.dim})。`;
+  const sceneLabel = previous.scene ? SCENES[previous.scene]?.label ?? previous.scene : null;
+  const where = sceneLabel ? `场景:${sceneLabel} · ` : '';
+  const head = `上一轮你已经建议过:「${previous.action}」(${where}维度:${previous.dim})。`;
 
   if (repeat <= 1) {
     return `${head}
