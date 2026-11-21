@@ -1,7 +1,7 @@
 import * as Speech from 'expo-speech';
 import { useCallback, useEffect, useRef } from 'react';
 
-import { followUpDelay, speechWatchdogMs } from '@/domain/guidance/live-analysis-policy';
+import { followUpDelay, speechWatchdogMs } from '@/domain/guidance/voice-policy';
 import type { LiveSuggestion } from '@/domain/shared/types';
 
 /** 两次分析之间的最小间隔:防止 TTS 秒回导致连续请求 */

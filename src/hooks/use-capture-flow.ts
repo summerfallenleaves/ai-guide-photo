@@ -21,6 +21,8 @@ export type CaptureFlowDeps = {
   thinking: 'disabled' | 'high';
   meta: () => PhotoMeta | null;
   limits: () => CameraLimits | undefined;
+  /** 整个取景会话的建议摘要,点评时用来对照(没有会话就是 null) */
+  getSessionAdvice: () => string | null;
   /** 快门前的最后一条建议,点评时用来对照"用户有没有照做" */
   getLastSuggestion: () => { headline: string; action: string } | null;
   onError: (message: string) => void;
@@ -133,6 +135,7 @@ export function useCaptureFlow(deps: CaptureFlowDeps): CaptureFlow {
             endpoint: d.apiEndpoint,
             meta: photoMeta,
             lastLiveSuggestion: lastSuggestion,
+            sessionAdvice: d.getSessionAdvice(),
             limits: d.limits(),
           });
           if (mySeq !== reviewSeq.current) return; // 已经又拍了一张,丢弃旧结果

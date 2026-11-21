@@ -18,9 +18,9 @@ describe('设置之间的依赖关系', () => {
   });
 
   it('自动分析需要快速模式作为前置', () => {
-    expect(liveAnalysisEnabled({ ...base, fastMode: false, autoAnalyze: true })).toBe(false);
-    expect(liveAnalysisEnabled({ ...base, fastMode: true, autoAnalyze: false })).toBe(false);
-    expect(liveAnalysisEnabled({ ...base, fastMode: true, autoAnalyze: true })).toBe(true);
+    // 会话由相机页按钮控制,这里只判断"有没有能力跑"(快速模式)
+    expect(liveAnalysisEnabled({ ...base, fastMode: false })).toBe(false);
+    expect(liveAnalysisEnabled({ ...base, fastMode: true })).toBe(true);
   });
 
   it('间隔毫秒数 = 秒数 × 1000', () => {
@@ -30,9 +30,9 @@ describe('设置之间的依赖关系', () => {
 });
 
 describe('默认值', () => {
-  it('默认开启快速模式和自动分析', () => {
+  it('默认开启快速模式和自动拍摄', () => {
     expect(DEFAULT_SETTINGS.fastMode).toBe(true);
-    expect(DEFAULT_SETTINGS.autoAnalyze).toBe(true);
+    expect(DEFAULT_SETTINGS.autoCapture).toBe(true);
   });
 
   it('默认间隔 3 秒', () => {

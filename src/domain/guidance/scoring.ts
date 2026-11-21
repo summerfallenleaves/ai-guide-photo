@@ -6,7 +6,8 @@
  */
 import type { AdjustParams, AnalyzeOutcome, CaptureVerdict, Dim } from '@/domain/shared/types';
 
-const DIM_LABELS: Record<Dim, string> = {
+/** 维度的中文标签,复盘摘要和卡片都用它 */
+export const DIM_LABELS: Record<Dim, string> = {
   composition: '构图',
   light: '光线',
   pose: '人物',

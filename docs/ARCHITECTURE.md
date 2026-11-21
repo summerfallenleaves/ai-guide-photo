@@ -33,7 +33,7 @@ flowchart TD
 | --- | --- | --- |
 | **表现层** | `src/app` `src/components` `src/theme.ts` | 只做组合与布局,不含业务判断 |
 | **应用层** | `src/hooks` | 管"什么时候做、做多久、什么时候停":副作用、定时、订阅、生命周期 |
-| | `use-live-analysis` | 分析循环:抓帧 → 调模型 → 失败暂停 → 定时器 |
+| | `use-live-session` | 取景会话:定时抓帧 → 调模型 → 倒计时 → 派发状态机事件 |
 | | `use-voice-guide` | 播报,以及播报期间冻结建议 |
 | | `use-capture-flow` | 拍照 → 前置镜像 → 存相册 → 进复盘 → 后台点评 |
 | | `use-camera-session` | 订阅原生事件、缓存能力、下发参数 |
@@ -53,7 +53,7 @@ flowchart TD
 | 层 | 内容 | 职责 |
 | --- | --- | --- |
 | 界面层 | `src/app` `src/components` | 只做组合与布局,不含业务判断 |
-| hooks | `use-live-analysis` | 分析循环:抓帧 → 调模型 → 失败暂停 → 定时器 |
+| hooks | `use-live-session` | 会话运行时:抓帧、调模型、倒计时 |
 | | `use-voice-guide` | 播报,以及播报期间冻结建议 |
 | | `use-capture-flow` | 拍照 → 前置镜像 → 存相册 → 进复盘 → 后台点评 |
 | | `use-shutter-timer` | 定时快门(关 / 3s / 10s) |
@@ -73,40 +73,43 @@ flowchart TD
 
 ---
 
-## 二、取景建议(每 3~10 秒一轮)
+## 二、取景会话(点「开始 AI 取景」之后)
 
 ```mermaid
 sequenceDiagram
-    participant T as 定时器
-    participant L as 分析循环
+    participant U as 用户
+    participant H as use-live-session
+    participant A as agent 状态机
     participant N as 原生相机
     participant D as DeepSeek
-    participant V as 语音播报
-    participant C as 建议卡片
+    participant UI as 建议卡片
 
-    T->>L: 触发一轮
-    L->>L: 前提检查
-    Note right of L: 关闭 暂停 无 Key 无权限 播报中 拍照中<br/>任一条成立就跳过
-    L->>N: 读取当前预览帧
-    N-->>L: base64
-    L->>D: 图片 + 光学参数 + 关闭思考
-    D-->>L: 维度 标题 动作 是否可拍
-    L->>C: 换一条建议
-    opt 语音播报开启
-        L->>V: 新建议
-        V->>V: 置位播报中 后续分析跳过
-        V->>L: 念完或超时后补一次
-        Note right of V: 与上一轮间隔至少 1.5 秒
+    U->>H: 点「开始 AI 取景」
+    H->>H: 清空残留建议与历史
+    H->>A: START → observing
+    loop 每 3 秒(暂停/遮挡时跳过)
+        H->>N: 读取预览帧
+        N-->>H: base64
+        H->>D: 图片 + 光学参数 + 上一轮建议(连续性)
+        D-->>H: 建议 + readyToShoot
+        H->>A: ROUND_OK
+        A-->>H: 新状态
+        H->>UI: 换一条建议
     end
+    Note over A: 连续两轮 ready 且护栏通过
+    A-->>H: counting(倒计时 3)
+    H->>UI: 全屏倒计时(点任意处取消)
+    H->>H: 归零 → 页面按快门
+    H->>A: STOP → idle(清空历史)
+    Note over H: 拍照链路带着会话摘要进复盘
 ```
 
 关键取舍:
 
-- **抓的是预览帧,不是拍照** —— 送模型的就是用户眼前这一帧
-- **播报期间冻结** —— 一句话 4~5 秒而间隔最短 3 秒,不冻结就会被顶掉半句
-- **失败超过 3 次自动暂停** —— 后台期间的失败不算数,否则回前台就是一片红字
-
----
+- **会话即连续性**:开/关就是边界,不需要检测"画面是否还是同一个场景"
+- **模型只说,代码决定拍**:`readyToShoot` 只是信号,真正按快门要过护栏(连续两轮 + 开关 + 未遮挡)
+- **连续两轮**抵消"抓帧 → 模型返回"约 1.8 秒的延迟
+- **记忆在运行时**:状态机只管阶段与计数,建议时间线在 hook 的 ref 里
 
 ## 三、拍照到点评
 
@@ -150,7 +153,7 @@ sequenceDiagram
 
 | 数据 | 存在哪 | 写入 | 读取 |
 | --- | --- | --- | --- |
-| 用户设置(快速模式 / 自动分析 / 间隔 / 语音 / 参数建议) | AsyncStorage | `data/settings` | `useSettings()` 全局订阅 |
+| 用户设置(快速模式 / 自动拍摄 / 间隔 / 语音 / 参数建议 / 网格) | AsyncStorage | `data/settings` | `useSettings()` 全局订阅 |
 | API Key | SecureStore(系统密钥库) | `data/secure-key` | `useApiKey()` |
 | 刚拍的照片 + 点评状态 + 待应用参数 | 内存 | `data/capture-store` | 复盘页、相机页 |
 | 拍照历史(含照片文件) | AsyncStorage + 文档目录 | `data/history` | `useHistory()` |

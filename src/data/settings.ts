@@ -6,8 +6,6 @@ export type Thinking = 'disabled' | 'high';
 export type AppSettings = {
   /** 快速模式:开 → 不思考(disabled,1.6~1.8 秒);关 → high(3~6 秒,更细致) */
   fastMode: boolean;
-  /** 自动分析:取景时定时给建议 */
-  autoAnalyze: boolean;
   /** 自动分析间隔(秒) */
   intervalSec: number;
   /** DeepSeek 接口地址(留空用官方地址) */
@@ -16,6 +14,8 @@ export type AppSettings = {
   paramAdvice: boolean;
   /** 取景九宫格辅助线 */
   gridEnabled: boolean;
+  /** 连续两轮"可以拍了"后自动按快门(会话内的护栏开关) */
+  autoCapture: boolean;
   /**
    * 语音播报取景建议。
    * **默认关闭** —— 户外/公共场合出声可能打扰别人,必须用户主动打开。
@@ -28,11 +28,11 @@ export const INTERVAL_MAX = 10;
 
 export const DEFAULT_SETTINGS: AppSettings = {
   fastMode: true,
-  autoAnalyze: true,
   intervalSec: 3,
   apiEndpoint: '',
   paramAdvice: true,
   gridEnabled: true,
+  autoCapture: true,
   voiceGuide: false,
 };
 
@@ -78,7 +78,6 @@ function sanitize(input: Partial<AppSettings>): AppSettings {
   const interval = Number(input.intervalSec);
   return {
     fastMode: typeof input.fastMode === 'boolean' ? input.fastMode : DEFAULT_SETTINGS.fastMode,
-    autoAnalyze: typeof input.autoAnalyze === 'boolean' ? input.autoAnalyze : DEFAULT_SETTINGS.autoAnalyze,
     voiceGuide: typeof input.voiceGuide === 'boolean' ? input.voiceGuide : DEFAULT_SETTINGS.voiceGuide,
     intervalSec: Number.isFinite(interval)
       ? Math.min(INTERVAL_MAX, Math.max(INTERVAL_MIN, Math.round(interval)))
@@ -86,6 +85,7 @@ function sanitize(input: Partial<AppSettings>): AppSettings {
     apiEndpoint: typeof input.apiEndpoint === 'string' ? input.apiEndpoint.trim() : DEFAULT_SETTINGS.apiEndpoint,
     paramAdvice: typeof input.paramAdvice === 'boolean' ? input.paramAdvice : DEFAULT_SETTINGS.paramAdvice,
     gridEnabled: typeof input.gridEnabled === 'boolean' ? input.gridEnabled : DEFAULT_SETTINGS.gridEnabled,
+    autoCapture: typeof input.autoCapture === 'boolean' ? input.autoCapture : DEFAULT_SETTINGS.autoCapture,
   };
 }
 
@@ -103,8 +103,12 @@ export function thinkingOf(s: AppSettings): Thinking {
  * 规则:只有快速模式打开时自动分析才生效——高思考强度下每次要 3~6 秒,
  * 再按 3 秒一轮去抓帧只会让建议永远滞后于画面。
  */
+/**
+ * 取景会话由相机页的「开始 AI 取景」按钮控制,不再是设置开关。
+ * 这个函数保留给「设置页摘要」判断当前是否有能力跑取景。
+ */
 export function liveAnalysisEnabled(s: AppSettings): boolean {
-  return s.fastMode && s.autoAnalyze;
+  return s.fastMode;
 }
 
 export function liveIntervalMs(s: AppSettings): number {

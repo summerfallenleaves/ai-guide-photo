@@ -7,8 +7,12 @@ type Props = {
   suggestion: LiveSuggestion | null;
   analyzing: boolean;
   error: string | null;
-  /** 取景自动分析是否生效(快速模式 + 自动分析都开启) */
-  liveOn: boolean;
+  /** 取景会话是否正在进行(由「开始 AI 取景」按钮控制) */
+  sessionActive: boolean;
+  /** 开始会话 */
+  onStart: () => void;
+  /** 结束会话 */
+  onStop: () => void;
   /** 连续失败后暂停了自动分析 */
   paused: boolean;
   onRefresh: () => void;
@@ -21,7 +25,9 @@ export function SuggestionCard({
   suggestion,
   analyzing,
   error,
-  liveOn,
+  sessionActive,
+  onStart,
+  onStop,
   paused,
   onRefresh,
   onOpenSettings,
@@ -45,13 +51,27 @@ export function SuggestionCard({
   }
 
   // 关闭自动分析后这张卡没有存在意义(它只服务于定时抓帧),直接不渲染
-  if (!liveOn && !paused) return null;
+  if (!sessionActive) {
+    // 会话没开时,这个位置就是入口 —— 空态即按钮
+    return (
+      <View style={[styles.card, compact && styles.cardCompact]}>
+        <Pressable onPress={onStart} style={styles.startButton} hitSlop={6}>
+          <Text style={styles.startText}>开始 AI 取景</Text>
+        </Pressable>
+        <Text style={styles.placeholderBody}>
+          {compact
+            ? '连续给建议,画面可以拍时自动按快门。'
+            : '每几秒看一眼画面,连续给建议;画面可以拍的时候会自动按下快门。'}
+        </Text>
+      </View>
+    );
+  }
 
   if (!suggestion) {
     return (
       <View style={[styles.card, compact && styles.cardCompact]}>
         <Text style={styles.placeholderTitle}>
-          {paused ? '自动分析暂停了' : analyzing ? '正在看画面…' : '把镜头对准想拍的东西'}
+          {paused ? '已经暂停' : analyzing ? '正在看画面…' : '把镜头对准想拍的东西'}
         </Text>
         <Text style={styles.placeholderBody}>
           {paused
@@ -83,6 +103,10 @@ export function SuggestionCard({
       <Text style={[styles.headline, compact && styles.headlineCompact]}>{suggestion.headline}</Text>
       <Text style={[styles.action, compact && styles.actionCompact]}>{suggestion.action}</Text>
       {!compact && suggestion.reason ? <Text style={styles.reason}>{suggestion.reason}</Text> : null}
+
+      <Pressable onPress={onStop} style={styles.stopButton} hitSlop={6}>
+        <Text style={styles.stopText}>结束取景</Text>
+      </Pressable>
     </View>
   );
 }
@@ -99,6 +123,16 @@ function ConfidenceDots({ value }: { value: number }) {
 }
 
 const styles = StyleSheet.create({
+  startButton: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: spacing.xxl,
+    paddingVertical: spacing.lg,
+    borderRadius: radius.pill,
+    backgroundColor: palette.accent,
+  },
+  startText: { color: palette.onAccent, fontSize: type.body.fontSize, fontWeight: weight.bold },
+  stopButton: { alignSelf: 'flex-end', marginTop: spacing.sm, paddingVertical: spacing.xs },
+  stopText: { color: palette.textFaint, fontSize: type.caption.fontSize, fontWeight: weight.medium },
   card: {
     backgroundColor: palette.card,
     borderRadius: radius.lg,

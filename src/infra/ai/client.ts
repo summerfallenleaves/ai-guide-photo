@@ -5,11 +5,14 @@
  * **规则不在这里** —— prompt 在 `domain/guidance/prompt.ts`,
  * 返回内容的清洗在 `domain/guidance/scoring.ts`。
  */
+import { continuityNote, type Advice } from '@/domain/guidance/continuity';
 import {
   CAPTURE_PROMPT,
   LIVE_PROMPT,
   SYSTEM_PROMPT,
   withLastSuggestion,
+  withSessionHistory,
+  withPreviousAdvice,
   withLimits,
   withMeta,
 } from '@/domain/guidance/prompt';
@@ -42,6 +45,10 @@ export type AskOptions = {
   meta?: PhotoMeta | null;
   /** 快门前的最后一条取景建议 */
   lastLiveSuggestion?: { headline: string; action: string } | null;
+  /** 上一轮取景建议与它被重复的次数,用于保持建议连续性 */
+  previousAdvice?: { advice: Advice; repeat: number } | null;
+  /** 整个取景会话的建议摘要,点评时用来对照 */
+  sessionAdvice?: string | null;
   apiKey: string;
   endpoint?: string;
   model?: string;
@@ -65,7 +72,17 @@ export async function askDeepSeek(opts: AskOptions): Promise<AnalyzeOutcome> {
           {
             type: 'text',
             text: withLimits(
-              withLastSuggestion(withMeta(isCapture ? CAPTURE_PROMPT : LIVE_PROMPT, opts.meta), isCapture ? opts.lastLiveSuggestion : null),
+              withSessionHistory(
+                withLastSuggestion(
+                  withPreviousAdvice(
+                    withMeta(isCapture ? CAPTURE_PROMPT : LIVE_PROMPT, opts.meta),
+                    // 只对取景建议做连续性;拍后点评是独立的一次判断
+                    isCapture ? null : continuityNote(opts.previousAdvice?.advice ?? null, opts.previousAdvice?.repeat ?? 1),
+                  ),
+                  isCapture ? opts.lastLiveSuggestion : null,
+                ),
+                isCapture ? opts.sessionAdvice ?? null : null,
+              ),
               isCapture ? opts.limits : undefined,
             ),
           },

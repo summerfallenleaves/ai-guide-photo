@@ -15,6 +15,10 @@ export type AnalyzeOptions = {
   limits?: CameraLimits;
   /** 快门前的最后一条取景建议,让点评能对照"用户有没有照做" */
   lastLiveSuggestion?: { headline: string; action: string } | null;
+  /** 整个取景会话的建议摘要(点评用) */
+  sessionAdvice?: string | null;
+  /** 上一轮取景建议,用于保持建议的连续性 */
+  previousAdvice?: { advice: { headline: string; action: string; dim: string }; repeat: number } | null;
 };
 
 /**
@@ -40,6 +44,8 @@ export async function analyze(
     meta: opts.meta,
     limits: opts.limits,
     lastLiveSuggestion: opts.lastLiveSuggestion,
+    previousAdvice: opts.previousAdvice,
+    sessionAdvice: opts.sessionAdvice,
     apiKey,
     endpoint: opts.endpoint,
     timeoutMs: opts.timeoutMs,

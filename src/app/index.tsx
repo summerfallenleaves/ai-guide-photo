@@ -23,7 +23,7 @@ import { AUTO_SELECTION, ProCameraPanel, type ProSelection } from '@/components/
 import { LevelBadge } from '@/components/level-badge';
 import { SuggestionCard } from '@/components/suggestion-card';
 import { useCaptureFlow } from '@/hooks/use-capture-flow';
-import { useLiveAnalysis } from '@/hooks/use-live-analysis';
+import { useLiveSession } from '@/hooks/use-live-session';
 import { useShutterTimer } from '@/hooks/use-shutter-timer';
 import { usePreviewGestures } from '@/hooks/use-preview-gestures';
 import { useTilt } from '@/hooks/use-tilt';
@@ -34,7 +34,7 @@ import { useApiKey } from '@/hooks/use-api-key';
 import { useCameraPermission } from '@/hooks/use-camera-permission';
 import { useCameraSession } from '@/hooks/use-camera-session';
 import { Camera2Preview } from '@/infra/camera/native-camera2';
-import { liveAnalysisEnabled, thinkingOf, useSettings } from '@/data/settings';
+import { thinkingOf, useSettings } from '@/data/settings';
 import { palette, radius, spacing, tabularNums, type, weight } from '@/theme';
 
 
@@ -42,7 +42,6 @@ export default function CameraScreen() {
   const permission = useCameraPermission();
 
   const settings = useSettings();
-  const liveOn = liveAnalysisEnabled(settings);
 
   const [facing, setFacing] = useState<'back' | 'front'>('back');
   const [focused, setFocused] = useState(true);
@@ -142,8 +141,12 @@ export default function CameraScreen() {
    */
   const voiceSpeakingRef = useRef(false);
 
-  const live = useLiveAnalysis({
-    liveOn,
+  const isBlocked = useCallback(
+    () => voiceSpeakingRef.current || captureBusyRef.current || proOpen,
+    [proOpen],
+  );
+
+  const live = useLiveSession({
     cameraReady: session.ready,
     hasApiKey: keyReady,
     hasPermission: permission.granted,
@@ -152,6 +155,9 @@ export default function CameraScreen() {
     intervalSec: settings.intervalSec,
     voiceGuide: settings.voiceGuide,
     apiEndpoint: settings.apiEndpoint,
+    autoCapture: settings.autoCapture,
+    // 播报中、拍照中、专业面板展开时都不抓帧(用 getter,避免渲染期读 ref)
+    isBlocked,
     grab: session.grab,
     meta: session.meta,
     limits: () =>
@@ -163,19 +169,19 @@ export default function CameraScreen() {
             exposureMaxNs: session.caps.exposureMaxNs,
           }
         : undefined,
-    // 播报中、拍照中都不抓帧:前者会打断语音,后者会和快门抢相机
-    isBlocked: () => voiceSpeakingRef.current || captureBusyRef.current,
     isAppActive: () => appActiveRef.current,
   });
 
-  const { retry: retryLive, clearError, reportError, resetFailures } = live;
+  const { retry: retryLive, clearError, reportError } = live;
+
+  const { start: startSession, stop: stopSession, cancel: cancelCountdown } = live;
 
   const voice = useVoiceGuide({
     enabled: settings.voiceGuide,
     focused,
     appActive,
     suggestion: live.suggestion,
-    onFollowUp: () => void live.run(),
+    onFollowUp: () => live.tick(),
     getLastRunAt: live.getLastRunAt,
     speakingFlag: voiceSpeakingRef,
   });
@@ -198,7 +204,7 @@ export default function CameraScreen() {
    * **纯提示**:出错、暂停、没有建议时都是 false,但快门永远可用。
    */
   const readyToShoot =
-    liveOn &&
+    live.active &&
     !live.paused &&
     !errorText &&
     live.suggestion?.mode === 'live' &&
@@ -213,13 +219,12 @@ export default function CameraScreen() {
       if (active) {
         // 回来时清掉后台期间遗留的错误:那多半是挂起/超时造成的假故障
         clearError();
-        resetFailures();
       } else {
         markNotReady();
       }
     });
     return () => sub.remove();
-  }, [clearError, resetFailures, markNotReady]);
+  }, [clearError, markNotReady]);
 
   const { previewGesture } = usePreviewGestures({
     getCaps: () => session.caps,
@@ -276,11 +281,20 @@ export default function CameraScreen() {
           }
         : undefined,
     getLastSuggestion: () => lastSuggestionRef.current,
+    getSessionAdvice: live.digest,
     onError: reportError,
     flash,
   });
 
   const shutter = useShutterTimer(() => void capture());
+
+  // 自动拍摄:倒计时归零时由页面按快门(副作用集中在页面,方便看清是谁在拍)
+  const cancelSession = live.stop;
+  useEffect(() => {
+    if (live.state.phase !== 'counting' || live.state.countdown !== 0) return;
+    void capture();
+    cancelSession();
+  }, [live.state.phase, live.state.countdown, capture, cancelSession]);
 
   if (!permission.checked) {
     return (
@@ -367,6 +381,14 @@ export default function CameraScreen() {
         </Pressable>
       ) : null}
 
+      {/* 自动拍摄倒计时:会话连续两轮"可以拍了"后出现,点任意处取消 */}
+      {live.state.phase === 'counting' ? (
+        <Pressable style={styles.countdownLayer} onPress={cancelCountdown}>
+          <Text style={styles.countdownText}>{live.state.countdown}</Text>
+          <Text style={styles.countdownHint}>自动拍摄,点任意处取消</Text>
+        </Pressable>
+      ) : null}
+
       {/* 变焦倍率提示:不在 1x 时才显示 */}
       {zoom > 1.05 ? (
         <View pointerEvents="none" style={styles.zoomPill}>
@@ -420,8 +442,10 @@ export default function CameraScreen() {
               suggestion={live.suggestion}
               analyzing={live.analyzing}
               error={errorText}
-              liveOn={liveOn}
+              sessionActive={live.active}
               paused={live.paused}
+              onStart={startSession}
+              onStop={stopSession}
               onOpenSettings={() => router.push('/settings')}
               onRefresh={retryNow}
             />

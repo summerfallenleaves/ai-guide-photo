@@ -98,6 +98,29 @@ export function formatShutterNs(ns: number): string {
  * 目的:让点评和取景时的建议**连起来**。否则两段会各说各话,
  * 用户会觉得"刚才让我抬高,现在又说我构图没问题"。
  */
+/**
+ * 把整段会话的建议摘要拼进点评 prompt(只用于 capture)。
+ *
+ * 有了它,点评能评估"用户在取景过程中被建议做了什么、最后拍成什么样",
+ * 而不是把这张照片当成孤立的一帧。
+ */
+export function withSessionHistory(base: string, digest: string | null): string {
+  if (!digest) return base;
+  return `${base}
+
+补充信息:这张照片是按下面的取景建议拍的,点评时可以对照一下用户有没有照做、效果如何。
+${digest}
+注意:只对与最终画面明显相关的建议做评价,不要硬扯;画面已经不错时不要为了呼应建议而挑毛病。`;
+}
+
+/** 把「上一轮说过什么」拼进取景 prompt(只用于 live) */
+export function withPreviousAdvice(base: string, note: string | null): string {
+  if (!note) return base;
+  return `${base}
+
+${note}`;
+}
+
 export function withLastSuggestion(
   base: string,
   last?: { headline: string; action: string } | null,

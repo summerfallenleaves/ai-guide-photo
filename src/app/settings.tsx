@@ -74,11 +74,8 @@ export default function SettingsScreen() {
         <View style={styles.summary}>
           <Text style={styles.summaryTitle}>当前生效</Text>
           <Text style={styles.summaryLine}>
-            {liveOn
-              ? settings.voiceGuide
-                ? '自动分析:跟语音节奏'
-                : `自动分析:每 ${settings.intervalSec} 秒`
-              : '自动分析:关闭'}
+            {`取景建议:相机页点「开始 AI 取景」· 每 ${settings.intervalSec} 秒` +
+              (settings.autoCapture ? ' · 可拍时自动拍' : '')}
           </Text>
           <Text style={styles.versionText}>版本 {Constants.expoConfig?.version ?? '—'}</Text>
         </View>
@@ -98,12 +95,10 @@ export default function SettingsScreen() {
         />
 
         <SwitchRow
-          title="自动分析"
-          description="取景时定时抓帧给建议,不用按快门也能看到提示。"
-          note={settings.fastMode ? null : '需要先打开快速模式'}
-          disabled={!settings.fastMode}
-          value={settings.autoAnalyze}
-          onValueChange={(v) => updateSettings({ autoAnalyze: v })}
+          title="自动拍摄"
+          description="在相机页开启 AI 取景后,连续两轮判断「可以拍了」就进入 3 秒倒计时并自动按快门。关掉就只提示、不自动拍。"
+          value={settings.autoCapture}
+          onValueChange={(v) => updateSettings({ autoCapture: v })}
         />
 
         <SwitchRow
@@ -121,7 +116,7 @@ export default function SettingsScreen() {
           onValueChange={(v) => updateSettings({ paramAdvice: v })}
         />
 
-        <View style={[styles.card, (!liveOn || settings.voiceGuide) && styles.cardDisabled]}>
+        <View style={[styles.card, settings.voiceGuide && styles.cardDisabled]}>
           <View style={styles.cardHeader}>
             <Text style={styles.cardTitle}>自动分析间隔</Text>
             <Text style={styles.cardValue}>
