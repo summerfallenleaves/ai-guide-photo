@@ -690,7 +690,16 @@ modules/camera2/                       本地 Expo Module(已入版本控制)
 - AGP 默认要写 `~/.android` → `Operation not permitted`,必须重定向
 - Release 模板默认用**调试密钥**签名 → 已换成 `.toolchain/keys/aiguide.keystore`
 
-### 7.7 下载
+### 7.7 Git / 提交
+
+- **多行提交信息用 `-F` 文件,不要用 `-m` 拼**:信息里带英文双引号时 shell 会提前截断,
+  后面的内容被当成 pathspec,报 `pathspec ... did not match any file(s)`。
+  写进 `/tmp/msg.txt` 再 `git commit -F /tmp/msg.txt` 稳。
+- 本机沙箱里 `HOME` 不会自动继承,`git push` / `git commit` 前要把它指向真实用户目录
+  (否则 git 读不到 `~/.gitconfig`);**具体路径因机器而异,不要写进仓库文件**。
+- `gh` 命令需要把 `XDG_CACHE_HOME` 指到一个可写目录,否则写缓存失败。
+
+### 7.8 下载
 
 - 大文件走 `curl -LO` 单线程只有 127~240KB/s,且频繁 `HTTP/2 stream not closed` 断流。
 - 有效解法:`--http1.1` + `-C -`(断点续传)+ 分段并行(16 路,约 1.5MB/s,快 6~10 倍)。
@@ -839,6 +848,14 @@ scripts/release.sh    同步版本号 + 构建 + 命名产物
 - 加带原生代码的库之后,Expo Go 就跑不了了,需要重新打包。
 - 优先用 Expo 官方模块,第三方库先确认在 Expo Go 里可用。
 - 提交前跑类型检查和 lint。
+- **多行提交信息一律写成文件,用 `git commit -F <file>`**
+  - 不要用 `git commit -m "..."` 拼多行:信息里一旦出现英文双引号,
+    shell 会把它当成字符串结束,后半段被当成 pathspec,提交直接失败
+    (v0.0.10 那次就踩了 — 好在失败时没有产生半成品提交)
+  - 中文引号 `「」` 和英文标点混排时尤其容易中招
+- **不要把本机绝对路径、用户名、主机名写进被跟踪的文件**(包括文档)
+  - 这是公开仓库:仓库里的每个字都会公开。写 `$HOME`、`<your-home>` 这类占位即可
+  - 需要记具体路径时,写进 `.toolchain/` 下的本地笔记(已 gitignore),不要写进 `docs/` 或 `AGENTS.md`
 - **不要随手打 tag**。tag = 正式发版 = CI 构建 + 生成 Release + 消耗版本号。
   自己验证改动用 `scripts/dev-build.sh`(产物 `assets/apk/ai-guide-photo-dev.apk`),版本号和 Releases 都不受影响。
 - 改 UI 前读第三节的交互原则;改相机/并发前读第四、五、六节。
