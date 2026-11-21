@@ -102,6 +102,13 @@ export default function SettingsScreen() {
         />
 
         <SwitchRow
+          title="AI 调参"
+          description="取景时允许 AI 直接调整曝光、白平衡和对焦(不只给文字建议)。你在专业面板里手动拨过参数后,本次取景不再自动调。"
+          value={settings.aiParams}
+          onValueChange={(v) => updateSettings({ aiParams: v })}
+        />
+
+        <SwitchRow
           title="语音播报"
           description="把取景建议读出来,举着手机不用低头看。默认关闭——公共场合出声可能打扰别人。开启后建议会等语音念完再刷新,不会说到一半被顶掉。"
           note={settings.fastMode ? null : null}

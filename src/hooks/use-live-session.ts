@@ -14,7 +14,13 @@ import {
 import type { Advice } from '@/domain/guidance/continuity';
 import { nextRepeat } from '@/domain/guidance/continuity';
 import { appendAdvice } from '@/domain/guidance/agent';
-import type { LiveSuggestion } from '@/domain/shared/types';
+import type { AdjustParams, LiveSuggestion } from '@/domain/shared/types';
+import {
+  decideAgentParams,
+  describeApplied,
+  normalizeAgentParams,
+} from '@/domain/guidance/param-policy';
+import type { ParamSnapshot } from '@/domain/guidance/param-policy';
 
 /** 每一轮分析之间的最小间隔(语音模式下由播报驱动,这里是兜底) */
 const VOICE_FALLBACK_TICK_MS = 10000;
@@ -34,6 +40,16 @@ export type LiveSessionDeps = {
   apiEndpoint: string;
   /** 设置里的「自动拍摄」开关 */
   autoCapture: boolean;
+  /** 设置里的「AI 调参」开关 */
+  aiParams: boolean;
+  /** 当前相机参数(给护栏判断变化够不够大) */
+  getParams: () => ParamSnapshot | null;
+  /** 把参数下发给相机 */
+  applyParams: (adj: AdjustParams) => void;
+  /** 用户是否在本次会话里手动接管了参数 */
+  isUserManual: () => boolean;
+  /** 是否正在拍照(拍照时不调参) */
+  isBusy: () => boolean;
   /** 专业面板展开 / 播报中 / 拍照中 —— 这些状态下不许抓帧、不许自动拍 */
   isBlocked: () => boolean;
   grab: () => Promise<string>;
@@ -51,6 +67,8 @@ export type LiveSession = {
   error: string | null;
   paused: boolean;
   active: boolean;
+  /** 最近一次自动调参的说明 */
+  appliedNote: string | null;
   /** 会话内建议的摘要,拍摄时交给复盘页 */
   digest: () => string | null;
   start: () => void;
@@ -79,6 +97,8 @@ export type LiveSession = {
 export function useLiveSession(deps: LiveSessionDeps): LiveSession {
   const busyRef = useRef(false);
   const lastRunAtRef = useRef(0);
+  /** 上一次自动调参的时间(限速用) */
+  const lastAppliedAtRef = useRef(0);
   /** 会话内的建议时间线(状态机不管记忆,这样纯函数不必关心历史) */
   const adviceRef = useRef<Advice[]>([]);
   /** 同一条建议连续出现的次数 */
@@ -92,6 +112,8 @@ export function useLiveSession(deps: LiveSessionDeps): LiveSession {
   const [suggestion, setSuggestion] = useState<LiveSuggestion | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** 最近一次自动调参的说明,用于卡片上的一行提示 */
+  const [appliedNote, setAppliedNote] = useState<string | null>(null);
 
   const depsRef = useRef(deps);
   useEffect(() => {
@@ -134,6 +156,24 @@ export function useLiveSession(deps: LiveSessionDeps): LiveSession {
       });
 
       if (result.mode === 'live') {
+        // Agent 直接调参:只有护栏全过才下发,失败/跳过都不影响建议本身
+        if (d.aiParams && result.params) {
+          const params = normalizeAgentParams(result.params, d.limits() ?? null);
+          const decision = decideAgentParams({
+            enabled: d.aiParams,
+            busy: d.isBusy(),
+            userTakeover: d.isUserManual(),
+            now: Date.now(),
+            lastAppliedAt: lastAppliedAtRef.current,
+            params,
+            current: d.getParams(),
+          });
+          if (decision.apply && params) {
+            d.applyParams(params);
+            lastAppliedAtRef.current = Date.now();
+            setAppliedNote(describeApplied(params));
+          }
+        }
         setSuggestion(result);
         setError(null);
         repeatRef.current = nextRepeat(previous, result.action);
@@ -189,6 +229,8 @@ export function useLiveSession(deps: LiveSessionDeps): LiveSession {
     // 开启时无条件清空上一条残留建议与会话记忆
     adviceRef.current = [];
     repeatRef.current = 1;
+    lastAppliedAtRef.current = 0;
+    setAppliedNote(null);
     setSuggestion(null);
     setError(null);
     send({ type: 'START' });
@@ -222,6 +264,7 @@ export function useLiveSession(deps: LiveSessionDeps): LiveSession {
       error,
       paused: state.paused,
       active: isSessionActive(state),
+      appliedNote,
       digest,
       start,
       stop,
@@ -233,6 +276,6 @@ export function useLiveSession(deps: LiveSessionDeps): LiveSession {
       shouldTick,
       tick,
     }),
-    [state, suggestion, analyzing, error, digest, start, stop, cancel, retry, clearError, reportError, getLastRunAt, shouldTick, tick],
+    [state, suggestion, analyzing, error, appliedNote, digest, start, stop, cancel, retry, clearError, reportError, getLastRunAt, shouldTick, tick],
   );
 }

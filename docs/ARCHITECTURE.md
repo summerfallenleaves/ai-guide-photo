@@ -41,7 +41,9 @@ flowchart TD
 | | `use-preview-gestures` | 捏合缩放 + 点按对焦 |
 | **领域层** | `src/domain/guidance` | `prompt` · 建议与点评怎么问 | 
 | | | `scoring` · 模型输出怎么清洗、verdict 与分数如何自洽 |
-| | | `live-analysis-policy` · 能不能跑 / 失败怎么算 / 间隔取多少 |
+| | | `agent` · 会话状态机(阶段 / 拍摄护栏 / 复盘摘要) |
+| | | `param-policy` · 调参护栏(范围 / 配对 / 阈值 / 限速) |
+| | | `continuity` · 建议重复计数 · `voice-policy` · 播报时序 |
 | | | `history-stats` · 平均分 / 趋势 / 通病维度 |
 | | `src/domain/shared` | `types` 领域模型 · `exif` 光学参数 |
 | **数据层** | `src/data` | `settings` `secure-key` `history` `capture-store` |
@@ -59,7 +61,8 @@ flowchart TD
 | | `use-shutter-timer` | 定时快门(关 / 3s / 10s) |
 | | `use-preview-gestures` | 捏合缩放 + 点按对焦 |
 | | `use-tilt` `use-api-key` `use-camera-permission` | 环境类 |
-| lib | `live-analysis-policy` | **纯函数**:能不能跑 / 失败怎么算 / 间隔取多少 · 有单测 |
+| lib | `agent` | **纯状态机**:会话阶段 / 拍摄护栏 / 复盘摘要 · 有单测 |
+| | `param-policy` | **纯函数**:调参范围、配对、阈值、限速、用户接管 · 有单测 |
 | | `history-stats` | **纯函数**:平均分 / 趋势 / 通病维度 · 有单测 |
 | | `api` `deepseek` | prompt、解析、兜底、报错分类 |
 | | `native-camera2` | JS 门面 + 模块缺失时的优雅降级 |

@@ -15,6 +15,8 @@ type Props = {
   onStop: () => void;
   /** 连续失败后暂停了自动分析 */
   paused: boolean;
+  /** 最近一次自动调参的说明,例如「已自动调 ISO 400 · 1/125s」 */
+  appliedNote?: string | null;
   onRefresh: () => void;
   onOpenSettings: () => void;
   /** 横屏空间紧张时用:去掉理由行、压缩字号与留白 */
@@ -29,6 +31,7 @@ export function SuggestionCard({
   onStart,
   onStop,
   paused,
+  appliedNote = null,
   onRefresh,
   onOpenSettings,
   compact = false,
@@ -103,6 +106,7 @@ export function SuggestionCard({
       <Text style={[styles.headline, compact && styles.headlineCompact]}>{suggestion.headline}</Text>
       <Text style={[styles.action, compact && styles.actionCompact]}>{suggestion.action}</Text>
       {!compact && suggestion.reason ? <Text style={styles.reason}>{suggestion.reason}</Text> : null}
+      {appliedNote ? <Text style={styles.appliedNote}>{appliedNote}</Text> : null}
 
       <Pressable onPress={onStop} style={styles.stopButton} hitSlop={6}>
         <Text style={styles.stopText}>结束取景</Text>
@@ -123,6 +127,12 @@ function ConfidenceDots({ value }: { value: number }) {
 }
 
 const styles = StyleSheet.create({
+  appliedNote: {
+    color: palette.accent,
+    fontSize: type.caption.fontSize,
+    fontWeight: weight.medium,
+    marginTop: spacing.xxs,
+  },
   startButton: {
     alignSelf: 'flex-start',
     paddingHorizontal: spacing.xxl,

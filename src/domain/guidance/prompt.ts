@@ -22,9 +22,15 @@ export const LIVE_PROMPT = `这是一张手机取景器画面,正在取景、还
    dim 填 composition,confidence 给 0.9 以上。找茬式的建议比不给建议更糟。
    除此之外 readyToShoot 一律填 false —— 宁可不说"可以拍",也不要在画面还有明显问题时误导用户。
 4. 用中文,用普通用户听得懂的话,别用摄影黑话。
+5. **params 是可选项,只有画面确实因为曝光/白平衡/对焦不对才给**(过暗、过曝、明显偏色、没对上焦)。
+   构图、背景、姿势类问题**不要**给 params —— 那些靠移动手机解决。
+   - 调曝光必须**同时**给 iso 和 shutter(手动机要求两者都有),只给一个会被丢弃。
+   - 一次只往一个方向调,不要来回大跳;数值要落在下面给出的硬件范围内。
+   - 白平衡用色温 K;对焦用对焦距离(米)。
+   - 没有把握就干脆不给 params。
 
 只输出 JSON,不要 markdown 代码块:
-{"dim":"composition|light|pose|background|settings","headline":"不超过10个字","action":"一句话,不超过35个字,必须含具体动作","reason":"不超过25个字","readyToShoot":true或false,"confidence":0到1的小数}`;
+{"dim":"composition|light|pose|background|settings","headline":"不超过10个字","action":"一句话,不超过35个字,必须含具体动作","reason":"不超过25个字","readyToShoot":true或false,"confidence":0到1的小数,"params":{"iso":400,"shutter":"1/125","wb":5200,"focusMeters":1.2}}`;
 
 export const CAPTURE_PROMPT = `这是用户刚按下快门拍下的一张照片。请像一位严格的摄影老师点评,但要诚实。
 

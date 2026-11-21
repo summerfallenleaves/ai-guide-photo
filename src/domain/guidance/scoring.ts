@@ -64,6 +64,8 @@ export function __normalize(p: Record<string, unknown>, isCapture: boolean): Ana
     readyToShoot: p.readyToShoot === true || headline.includes('可以拍了'),
     confidence: clamp01(p.confidence, 0.6),
     source: 'deepseek',
+    // 取景也可以给参数,但真正下发前还要过 Agent 的护栏(见 param-policy)
+    params: normalizeParams(p.params),
   };
 }
 

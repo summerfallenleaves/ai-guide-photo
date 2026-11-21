@@ -26,6 +26,11 @@ export type LiveSuggestion = {
    * **只是提示**:为 false 不代表不能拍,拿不到建议时也是 false。
    */
   readyToShoot: boolean;
+  /**
+   * 模型给出的可直接下发的参数(只有曝光/白平衡/对焦确实有问题时才给)。
+   * 是否真的应用到相机由 `domain/guidance/param-policy` 的护栏决定。
+   */
+  params?: AdjustParams | null;
 };
 
 /** AI 给出的可执行拍摄参数(全部可选,只给需要改的项) */
@@ -38,6 +43,15 @@ export type AdjustParams = {
   /** 对焦距离,单位米 */
   focusMeters?: number;
 };
+
+/** 相机当前参数的快照(调参护栏用它判断"变化够不够大") */
+export type CameraParamsSnapshot = {
+  manual: boolean;
+  iso: number;
+  exposureNs: number;
+  kelvin: number;
+  focusDiopters: number;
+} | null;
 
 /** 点评结论:保持 / 微调 / 重拍 */
 export type CaptureVerdict = 'keep' | 'tweak' | 'reshoot';

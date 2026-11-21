@@ -33,6 +33,7 @@ import { useVoiceGuide } from '@/hooks/use-voice-guide';
 import { useApiKey } from '@/hooks/use-api-key';
 import { useCameraPermission } from '@/hooks/use-camera-permission';
 import { useCameraSession } from '@/hooks/use-camera-session';
+import type { Camera2Params } from '@/infra/camera/native-camera2';
 import { Camera2Preview } from '@/infra/camera/native-camera2';
 import { thinkingOf, useSettings } from '@/data/settings';
 import { palette, radius, spacing, tabularNums, type, weight } from '@/theme';
@@ -156,6 +157,11 @@ export default function CameraScreen() {
     voiceGuide: settings.voiceGuide,
     apiEndpoint: settings.apiEndpoint,
     autoCapture: settings.autoCapture,
+    aiParams: settings.aiParams,
+    getParams: session.paramsSnapshot,
+    applyParams: session.applyAgentParams,
+    isUserManual: session.isUserManual,
+    isBusy: () => captureBusyRef.current,
     // 播报中、拍照中、专业面板展开时都不抓帧(用 getter,避免渲染期读 ref)
     isBlocked,
     grab: session.grab,
@@ -174,7 +180,21 @@ export default function CameraScreen() {
 
   const { retry: retryLive, clearError, reportError } = live;
 
-  const { start: startSession, stop: stopSession, cancel: cancelCountdown } = live;
+  const { stop: stopSessionRaw, cancel: cancelCountdown } = live;
+
+  /** 会话开始前的相机参数,结束时恢复(免得拍完停在被调过的状态) */
+  const baseParamsRef = useRef<Camera2Params | null>(null);
+  const startSession = useCallback(() => {
+    baseParamsRef.current = session.snapshotForRestore();
+    session.resetUserManual();
+    live.start();
+  }, [session, live]);
+
+  const stopSession = useCallback(() => {
+    stopSessionRaw();
+    session.restoreParams(baseParamsRef.current);
+    baseParamsRef.current = null;
+  }, [stopSessionRaw, session]);
 
   const voice = useVoiceGuide({
     enabled: settings.voiceGuide,
@@ -444,6 +464,7 @@ export default function CameraScreen() {
               error={errorText}
               sessionActive={live.active}
               paused={live.paused}
+              appliedNote={live.appliedNote}
               onStart={startSession}
               onStop={stopSession}
               onOpenSettings={() => router.push('/settings')}

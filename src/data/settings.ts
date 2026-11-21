@@ -16,6 +16,8 @@ export type AppSettings = {
   gridEnabled: boolean;
   /** 连续两轮"可以拍了"后自动按快门(会话内的护栏开关) */
   autoCapture: boolean;
+  /** 允许 Agent 直接把曝光/白平衡/对焦下发给相机 */
+  aiParams: boolean;
   /**
    * 语音播报取景建议。
    * **默认关闭** —— 户外/公共场合出声可能打扰别人,必须用户主动打开。
@@ -33,6 +35,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   paramAdvice: true,
   gridEnabled: true,
   autoCapture: true,
+  aiParams: true,
   voiceGuide: false,
 };
 
@@ -86,6 +89,7 @@ function sanitize(input: Partial<AppSettings>): AppSettings {
     paramAdvice: typeof input.paramAdvice === 'boolean' ? input.paramAdvice : DEFAULT_SETTINGS.paramAdvice,
     gridEnabled: typeof input.gridEnabled === 'boolean' ? input.gridEnabled : DEFAULT_SETTINGS.gridEnabled,
     autoCapture: typeof input.autoCapture === 'boolean' ? input.autoCapture : DEFAULT_SETTINGS.autoCapture,
+    aiParams: typeof input.aiParams === 'boolean' ? input.aiParams : DEFAULT_SETTINGS.aiParams,
   };
 }
 
