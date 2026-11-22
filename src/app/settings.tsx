@@ -254,9 +254,6 @@ export default function SettingsScreen() {
             keyboardType="url"
           />
           <Text style={styles.cardDesc}>留空用官方地址。以后如果把请求转接到自己的服务器,填在这里。</Text>
-          <Pressable onPress={() => router.push('/history')} hitSlop={8}>
-            <Text style={styles.linkText}>拍照历史 ›</Text>
-          </Pressable>
         </View>
       </ScrollView>
     </SafeAreaView>

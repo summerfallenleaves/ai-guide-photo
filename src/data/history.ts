@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Directory, File, Paths } from 'expo-file-system';
-import { useSyncExternalStore } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 
 import { Asset } from 'expo-media-library';
 
@@ -231,8 +231,27 @@ export function subscribeHistory(cb: () => void): () => void {
   return () => listeners.delete(cb);
 }
 
+/**
+ * 历史是否已经从磁盘读上来了。
+ *
+ * 这一步是异步的(AsyncStorage),而相机页的缩略图在首帧就需要判断"有没有历史"。
+ * 没有这个标记的话,冷启动会先显示"空"的白圆,读到数据后才变成缩略图。
+ */
+export function isHistoryLoaded(): boolean {
+  return loaded;
+}
+
 export function useHistory(): HistoryEntry[] {
+  // 谁消费历史,谁负责把它读上来 —— 否则冷启动时相机页的缩略图会是空的
+  useEffect(() => {
+    void loadHistory();
+  }, []);
   return useSyncExternalStore(subscribeHistory, getHistory, getHistory);
+}
+
+/** 历史是否已加载(用来区分"还没有历史"和"还没读完") */
+export function useHistoryLoaded(): boolean {
+  return useSyncExternalStore(subscribeHistory, isHistoryLoaded, () => false);
 }
 
 export function addHistoryEntry(entry: HistoryEntry) {

@@ -28,7 +28,7 @@ import { useShutterTimer } from '@/hooks/use-shutter-timer';
 import { usePreviewGestures } from '@/hooks/use-preview-gestures';
 import { useTilt } from '@/hooks/use-tilt';
 import { takePendingAdjust } from '@/data/capture-store';
-import { useHistory } from '@/data/history';
+import { useHistory, useHistoryLoaded } from '@/data/history';
 import { useVoiceGuide } from '@/hooks/use-voice-guide';
 import { useApiKey } from '@/hooks/use-api-key';
 import { useCameraPermission } from '@/hooks/use-camera-permission';
@@ -296,7 +296,10 @@ export default function CameraScreen() {
 
   /** 历史里最近的一张照片,用作左下角入口的缩略图 */
   const history = useHistory();
+  const historyLoaded = useHistoryLoaded();
   const latestPhoto = history[0]?.uri ?? null;
+  // 还没读完时显示一个暗圆:别让冷启动的用户以为"历史空了"
+  const thumbnailPending = !historyLoaded;
 
   const { capturing, capture } = useCaptureFlow({
     cameraReady: session.ready,
@@ -492,7 +495,11 @@ export default function CameraScreen() {
           <View style={styles.controls} pointerEvents="box-none">
             <View style={styles.leftControls}>
               <Pressable
-                style={[styles.historyButton, latestPhoto ? null : styles.historyButtonEmpty]}
+                style={[
+                  styles.historyButton,
+                  !latestPhoto && !thumbnailPending ? styles.historyButtonEmpty : null,
+                  thumbnailPending ? styles.historyButtonPending : null,
+                ]}
                 onPress={() => router.push('/history')}
                 hitSlop={10}>
                 {latestPhoto ? (
@@ -725,6 +732,11 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     overflow: 'hidden',
     backgroundColor: palette.fill,
+  },
+  historyButtonPending: {
+    backgroundColor: palette.fill,
+    borderWidth: 1,
+    borderColor: palette.border,
   },
   historyButtonEmpty: {
     // 没有历史时是个纯白圆,不放文字
