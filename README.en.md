@@ -50,13 +50,21 @@ get real control over exposure.
 
 | Feature | Notes |
 | --- | --- |
+| Live preview | 4:3 full frame (fills the view, no crop), optional rule-of-thirds grid, level |
+| **AI session** | Tap Start and get continuous tips; the shutter fires by itself when the frame is good (can be turned off) |
+| **Review deltas** | From the second shot of a scene: "＋6 vs last time", plus composition / light / subject scores |
+| **AI applies settings** | When exposure, WB or focus is off, the AI sets them directly (toggleable, with anti-oscillation guardrails) |
+| **Scene presets** | Pick portrait / landscape / food / street / other; both guidance and review follow that standard |
 | Pinch to zoom | 1x up to the device's max digital zoom |
 | Tap to focus | Focus ring; metering follows the tap |
 | Flash | Off / auto / torch (hidden if the device has no flash) |
-| Pro panel | Translucent sheet: exposure comp / ISO / shutter / focus / white balance |
+| Pro panel | Translucent sheet: exposure comp / ISO / shutter / focus (+ AF mode) / WB (kelvin or preset) / zoom steps, with a live histogram |
 | Timer | Off / 3 s / 10 s, tap anywhere to cancel |
 | Volume-key shutter | Same code path as the on-screen shutter (timer included) |
-| WYSIWYG | Preview and photo are strictly aligned (fill ratio 0.25 + matching crop) |
+| Voice guide | Reads each tip aloud (off by default) |
+| History entry | Round thumbnail at the bottom-left showing the latest photo |
+| History retention | 7/30/90 days and a 100/200/500 entry cap, both configurable |
+| WYSIWYG | Preview and photo are strictly aligned; photos are never cropped |
 
 The UI is locked to portrait. Photo orientation follows the device's physical orientation,
 independent of the UI.
@@ -82,7 +90,7 @@ three problems, it gets truncated to one and the settings advice is dropped.
 
 ### Also included
 
-- Photo history: grouped by day, kept for 7 days
+- Photo history: grouped by day; retention (7/30/90 days) and entry cap (100/200/500) are both configurable
 - Growth stats: average score, trend, weakest dimension — computed locally, costs no API calls
 - Voice guidance (off by default): reads suggestions aloud so you don't look down at the screen
 - **Works without an API key** — every camera feature is offline. Without a key the app shows a

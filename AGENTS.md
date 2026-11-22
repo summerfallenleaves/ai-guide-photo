@@ -96,6 +96,7 @@ Expo 每个 SDK 版本都有破坏性改动,记忆里的 API 很可能已经改�
 | `hooks/use-capture-flow.ts` | 拍照 → 前置镜像 → 存相册 → 进复盘 → 后台点评 |
 | `hooks/use-shutter-timer.ts` | 定时快门(关/3s/10s + 倒计时) |
 | `hooks/use-preview-gestures.ts` | 捏合缩放 + 点按对焦(唯一需要 React Compiler 豁免的地方) |
+| `components/pro-camera-panel.tsx` | 专业面板:变焦档位 / 曝光 / ISO / 快门 / 对焦(+模式)/ 白平衡(+预设)/ 直方图 |
 
 **约定**:新逻辑优先放进对应的 hook 或纯函数;页面只做组合和布局。
 判断类逻辑先写成纯函数(可以单测),再让 hook 调它。
@@ -594,6 +595,11 @@ modules/camera2/                       本地 Expo Module(已入版本控制)
 ### 关键实现约定
 
 - **手动曝光必须同时给 ISO 和快门**,只给一个会退回自动(`CONTROL_AE_MODE=OFF` 需要两者)
+- **新增的轴(对焦模式 / 白平衡预设)一律按设备能力表过滤**:
+  `getCapabilities()` 返回 `afModes` / `awbPresets`,面板只显示存在的项;
+  原生侧再兜一层 —— 不支持的轴**静默降级**,绝不能让整个预览失败
+- **直方图按目标尺寸取位图**:`textureView.getBitmap(96, 72)`,
+  不要先拿整张 1260×1680 再缩放(每 600ms 一次会分配 8MB 级别内存)
 - 每轴设置前先查 `CONTROL_AE/AF/AWB_AVAILABLE_MODES`,不支持就跳过该轴,**不能让整个预览失败**
 - 参数组合被拒时**退回基础预览请求**,保证永远有画面
 - **离开页面必须释放相机**:预览按 `focused && appActive` 门控挂载;`destroy()` 要处理
@@ -734,14 +740,20 @@ modules/camera2/                       本地 Expo Module(已入版本控制)
 - 加载中和"确实没有"是两种状态:前者暗色圆,后者白圆(`useHistoryLoaded()` 区分),
   否则用户会以为历史被清空了。
 
-### 7.6 构建(详见第九节)
+### 7.6 性能(面板类)
+
+- **直方图别拿整张预览位图**:`textureView.bitmap` 会分配 1260×1680 的位图,
+  面板开着时每 600ms 一次 → 明显 GC 抖动。用 `getBitmap(96, 72)` 直接按目标尺寸出图。
+- 定时刷新类 UI(直方图)只在面板展开时跑,关掉就 `clearInterval`。
+
+### 7.7 构建(详见第九节)
 
 - 本机没有系统 JDK / Android SDK,且**沙箱只允许写项目内目录** → 工具链全部装在 `.toolchain/`
 - AGP 同时检测到 `ANDROID_USER_HOME` 和 `ANDROID_PREFS_ROOT` 会直接报错(值相同也不行)
 - AGP 默认要写 `~/.android` → `Operation not permitted`,必须重定向
 - Release 模板默认用**调试密钥**签名 → 已换成 `.toolchain/keys/aiguide.keystore`
 
-### 7.7 Git / 提交
+### 7.8 Git / 提交
 
 - **多行提交信息用 `-F` 文件,不要用 `-m` 拼**:信息里带英文双引号时 shell 会提前截断,
   后面的内容被当成 pathspec,报 `pathspec ... did not match any file(s)`。
@@ -750,7 +762,7 @@ modules/camera2/                       本地 Expo Module(已入版本控制)
   (否则 git 读不到 `~/.gitconfig`);**具体路径因机器而异,不要写进仓库文件**。
 - `gh` 命令需要把 `XDG_CACHE_HOME` 指到一个可写目录,否则写缓存失败。
 
-### 7.8 下载
+### 7.9 下载
 
 - 大文件走 `curl -LO` 单线程只有 127~240KB/s,且频繁 `HTTP/2 stream not closed` 断流。
 - 有效解法:`--http1.1` + `-C -`(断点续传)+ 分段并行(16 路,约 1.5MB/s,快 6~10 倍)。

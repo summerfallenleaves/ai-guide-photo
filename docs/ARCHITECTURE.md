@@ -44,6 +44,7 @@ flowchart TD
 | | | `agent` · 会话状态机(阶段 / 拍摄护栏 / 复盘摘要) |
 | | | `param-policy` · 调参护栏(范围 / 配对 / 阈值 / 限速) |
 | | | `continuity` · 建议重复计数 · `voice-policy` · 播报时序 |
+| | | `interventions` · AI 干预记录(调参/自动拍)与摘要 |
 | | | `scenes` · 场景知识(rubric/优先级/示例/评分锚点)· `scene-refs` · 参考图元数据 |
 | | | `history-stats` · 平均分 / 趋势 / 通病维度 |
 | | `src/domain/shared` | `types` 领域模型 · `exif` 光学参数 |
@@ -65,6 +66,7 @@ flowchart TD
 | lib | `agent` | **纯状态机**:会话阶段 / 拍摄护栏 / 复盘摘要 · 有单测 |
 | | `param-policy` | **纯函数**:调参范围、配对、阈值、限速、用户接管 · 有单测 |
 | | `scenes` | **场景知识**:5 个场景的标准/优先级/示例/评分锚点 · 有单测 |
+| | `interventions` | **纯函数**:AI 干预记录与摘要(知情权)· 有单测 |
 | | `history-stats` | **纯函数**:平均分 / 趋势 / 通病维度 · 有单测 |
 | | `api` `deepseek` | prompt、解析、兜底、报错分类 |
 | | `native-camera2` | JS 门面 + 模块缺失时的优雅降级 |
