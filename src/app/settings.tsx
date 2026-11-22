@@ -10,6 +10,8 @@ import { getCachedApiKey, maskKey, saveApiKey } from '@/data/secure-key';
 import {
   INTERVAL_MAX,
   INTERVAL_MIN,
+  MAX_ENTRIES_OPTIONS,
+  RETENTION_OPTIONS,
   liveAnalysisEnabled,
   updateSettings,
   useSettings,
@@ -85,6 +87,22 @@ export default function SettingsScreen() {
           description="在取景画面上叠加九宫格辅助线,方便对齐三分法。"
           value={settings.gridEnabled}
           onValueChange={(v) => updateSettings({ gridEnabled: v })}
+        />
+
+        <SegmentRow
+          title="历史保留"
+          description="超过这个天数的记录会连同照片副本一起清掉。天数与条数谁先到就按谁裁。"
+          options={RETENTION_OPTIONS.map((d) => ({ label: `${d} 天`, value: d }))}
+          value={settings.retentionDays}
+          onChange={(v) => updateSettings({ retentionDays: v })}
+        />
+
+        <SegmentRow
+          title="历史条数上限"
+          description="防止某段时间密集拍摄把存储撑爆。按时间从旧到新裁,默认 200 条。"
+          options={MAX_ENTRIES_OPTIONS.map((n) => ({ label: `${n} 条`, value: n }))}
+          value={settings.maxHistoryEntries}
+          onChange={(v) => updateSettings({ maxHistoryEntries: v })}
         />
 
         <SwitchRow
@@ -260,6 +278,43 @@ export default function SettingsScreen() {
   );
 }
 
+type SegmentOption = { label: string; value: number };
+
+/** 少量固定选项的选择行(天数、条数这类不适合用开关的配置) */
+function SegmentRow({
+  title,
+  description,
+  options,
+  value,
+  onChange,
+}: {
+  title: string;
+  description: string;
+  options: SegmentOption[];
+  value: number;
+  onChange: (next: number) => void;
+}) {
+  return (
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>{title}</Text>
+      <Text style={styles.cardDesc}>{description}</Text>
+      <View style={styles.segmentRow}>
+        {options.map((option) => {
+          const active = option.value === value;
+          return (
+            <Pressable
+              key={option.value}
+              onPress={() => onChange(option.value)}
+              style={[styles.segment, active && styles.segmentActive]}>
+              <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{option.label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 function SwitchRow({
   title,
   description,
@@ -306,6 +361,19 @@ function StepperButton({ label, onPress, disabled }: { label: string; onPress: (
 }
 
 const styles = StyleSheet.create({
+  segmentRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
+  segment: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: palette.border,
+    backgroundColor: palette.fill,
+  },
+  segmentActive: { backgroundColor: palette.accent, borderColor: palette.accent },
+  segmentText: { color: palette.textDim, fontSize: type.subhead.fontSize, fontWeight: weight.medium },
+  segmentTextActive: { color: palette.onAccent, fontWeight: weight.bold },
   root: {
     flex: 1,
     backgroundColor: palette.bg,

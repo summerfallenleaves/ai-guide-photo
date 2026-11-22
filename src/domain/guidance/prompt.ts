@@ -57,6 +57,13 @@ strengths:先写 1 条这张照片**确实**做得好的地方。必须是具体
 
 headline:不超过 14 个字,一句话点出最值得说的事(keep 时就写肯定的话)。
 
+topFix:从 improvements 里挑出**最该先改的那一条**,原样再写一遍(不超过 30 个字)。
+用户只会先看这一条,所以必须是动作、能立刻做。
+
+dimensions:给三个维度打分(0~100 的整数):composition(构图)、light(光线)、subject(主体)。
+- 三者大致平均应该接近 score —— 不要总分 80 而三个维度都是 50。
+- 这个分数是给用户看的"为什么是 72 分",所以要能解释得通。
+
 improvements 的条数跟着 verdict 走:
 - keep → 0~1 条(可以给空数组)
 - tweak → 1~2 条
@@ -76,7 +83,7 @@ params:
 中文,说人话。
 
 只输出 JSON,不要 markdown 代码块:
-{"verdict":"keep|tweak|reshoot","score":整数,"strengths":["不超过30个字"],"headline":"不超过14个字","improvements":["不超过30个字"],"params":{"iso":整数,"shutter":"1/250","wb":5500,"focusMeters":1.2},"confidence":0到1的小数}
+{"verdict":"keep|tweak|reshoot","score":整数,"dimensions":{"composition":整数,"light":整数,"subject":整数},"topFix":"不超过30个字","strengths":["不超过30个字"],"headline":"不超过14个字","improvements":["不超过30个字"],"params":{"iso":整数,"shutter":"1/250","wb":5500,"focusMeters":1.2},"confidence":0到1的小数}
 `;
 
 /** 把相机的硬件范围拼进 prompt,避免模型给出设不进去的参数 */

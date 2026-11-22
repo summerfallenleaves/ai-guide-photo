@@ -70,6 +70,10 @@ export type CaptureResult = {
   improvements: string[];
   /** 结论:决定 UI 是否显示"没什么要改的" */
   verdict: CaptureVerdict;
+  /** 最该改的一件事(从 improvements 里挑出最重要的一条) */
+  topFix?: string | null;
+  /** 三个维度的分数(0~100),让总分"有据可查" */
+  dimensions?: { composition: number; light: number; subject: number } | null;
   /** 建议应用的拍摄参数,没有就不给 */
   params?: AdjustParams | null;
   confidence: number;

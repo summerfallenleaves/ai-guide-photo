@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { analyze } from '@/infra/ai';
 import type { CameraLimits } from '@/infra/ai/client';
@@ -13,6 +13,12 @@ import {
 } from '@/domain/guidance/agent';
 import type { Advice } from '@/domain/guidance/continuity';
 import { nextRepeat } from '@/domain/guidance/continuity';
+import {
+  lastParamsNote,
+  pushIntervention,
+  summarizeInterventions,
+  type Intervention,
+} from '@/domain/guidance/interventions';
 import { appendAdvice } from '@/domain/guidance/agent';
 import type { AdjustParams, LiveSuggestion, SceneId } from '@/domain/shared/types';
 import {
@@ -71,12 +77,23 @@ export type LiveSession = {
   active: boolean;
   /** 最近一次自动调参的说明 */
   appliedNote: string | null;
+  /** 本次会话的 AI 干预记录(拍完写进复盘/历史) */
+  interventions: Intervention[];
+  /** 上一次会话的小结(会话结束后显示,新会话开始不影响) */
+  lastSessionNote: string | null;
+  /** 拍照时取走干预记录 */
+  getInterventions: () => Intervention[];
   /** 会话内建议的摘要,拍摄时交给复盘页 */
   digest: () => string | null;
   start: () => void;
   stop: () => void;
-  /** 取消自动拍摄倒计时(点任意处) */
-  cancel: () => void;
+  /**
+   * 自动拍摄请求的序号:每满足一次"连续两轮 ready",这个数 +1。
+   * 页面据此触发一次真正的快门(副作用留在页面,方便看清谁在拍)。
+   */
+  captureRequest: number;
+  /** 取走一次拍摄请求(同一次请求只会返回一次 true) */
+  consumeCaptureRequest: () => boolean;
   retry: () => void;
   clearError: () => void;
   reportError: (message: string) => void;
@@ -95,8 +112,8 @@ export type LiveSession = {
  * 判断逻辑全在 `domain/guidance/agent.ts`(纯状态机),这里只负责:
  * 定时器、抓帧、调模型、把结果派发给状态机。
  *
- * **不直接按快门**:倒计时归零时状态会停在 `counting / countdown 0`,
- * 由页面根据这个状态触发拍摄 —— 副作用集中在页面,方便看清"谁在按快门"。
+ * **不直接按快门**:状态机给出"这一刻可以拍"的信号(变成 `captureRequest` 序号),
+ * 真正按快门的是页面 —— 副作用集中在一处,方便看清"谁在按快门"。
  */
 export function useLiveSession(deps: LiveSessionDeps): LiveSession {
   const busyRef = useRef(false);
@@ -108,34 +125,56 @@ export function useLiveSession(deps: LiveSessionDeps): LiveSession {
   /** 同一条建议连续出现的次数 */
   const repeatRef = useRef(1);
   /** 状态机用的护栏条件;放 ref 里让 reducer 不必每次重建 */
-  const [state, dispatch] = useReducer(
-    (current: SessionState, event: SessionEvent) => reduce(current, event).state,
-    INITIAL_STATE,
-  );
+  const [state, setState] = useState<SessionState>(INITIAL_STATE);
+  /** 状态放 ref,让 send 能连续派发;只在回调里读写,不在渲染期碰 */
+  const stateRef = useRef<SessionState>(INITIAL_STATE);
+  const [captureRequest, setCaptureRequest] = useState(0);
+  const captureRequestRef = useRef(0);
+  const consumedCaptureRef = useRef(0);
 
   const [suggestion, setSuggestion] = useState<LiveSuggestion | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** 最近一次自动调参的说明,用于卡片上的一行提示 */
   const [appliedNote, setAppliedNote] = useState<string | null>(null);
+  /** 本次会话 AI 的干预记录(调参 / 自动按快门),拍完写进复盘与历史 */
+  const interventionsRef = useRef<Intervention[]>([]);
+  const [interventions, setInterventions] = useState<Intervention[]>([]);
+  /** 上一次会话的小结(会话结束后留在卡片上,供事后查看) */
+  const [lastSessionNote, setLastSessionNote] = useState<string | null>(null);
 
   const depsRef = useRef(deps);
   useEffect(() => {
     depsRef.current = deps;
   }, [deps]);
 
-  const send = useCallback((event: SessionEvent) => dispatch(event), []);
+  const send = useCallback((event: SessionEvent) => {
+    const result = reduce(stateRef.current, event);
+    stateRef.current = result.state;
+    setState(result.state);
+    if (result.capture) {
+      const next = pushIntervention(interventionsRef.current, {
+        at: Date.now(),
+        kind: 'auto-shot',
+        detail: '连续两轮判断可以拍了',
+      });
+      interventionsRef.current = next;
+      setInterventions(next);
+      captureRequestRef.current += 1;
+      setCaptureRequest(captureRequestRef.current);
+    }
+  }, []);
 
   // 把护栏条件同步进状态机:面板/前后台/开关变化时都要刷新
   const { autoCapture, focused, appActive, isBlocked, cameraReady, hasApiKey, hasPermission, voiceGuide, intervalSec } = deps;
 
   useEffect(() => {
-    dispatch({
+    send({
       type: 'GUARD',
       autoCapture,
       blocked: !focused || !appActive || isBlocked(),
     });
-  }, [autoCapture, focused, appActive, isBlocked]);
+  }, [autoCapture, focused, appActive, isBlocked, send]);
 
   /** 一轮:抓帧 → 调模型 → 派发结果 */
   const run = useCallback(async () => {
@@ -176,7 +215,16 @@ export function useLiveSession(deps: LiveSessionDeps): LiveSession {
           if (decision.apply && params) {
             d.applyParams(params);
             lastAppliedAtRef.current = Date.now();
-            setAppliedNote(describeApplied(params));
+            const detail = describeApplied(params).replace(/^已自动调\s*/, '');
+            const next = pushIntervention(interventionsRef.current, {
+              at: Date.now(),
+              kind: 'params',
+              detail,
+              reason: result.reason || undefined,
+            });
+            interventionsRef.current = next;
+            setInterventions(next);
+            setAppliedNote(lastParamsNote(next));
           }
         }
         setSuggestion(result);
@@ -224,18 +272,21 @@ export function useLiveSession(deps: LiveSessionDeps): LiveSession {
     };
   }, [shouldTick, cameraReady, hasApiKey, hasPermission, voiceGuide, intervalSec, run]);
 
-  // 倒计时:counting 时每秒 tick 一次
-  useEffect(() => {
-    if (state.phase !== 'counting') return;
-    const timer = setInterval(() => send({ type: 'TICK' }), 1000);
-    return () => clearInterval(timer);
-  }, [state.phase, send]);
+  const consumeCaptureRequest = useCallback(() => {
+    if (captureRequestRef.current === 0 || consumedCaptureRef.current === captureRequestRef.current) {
+      return false;
+    }
+    consumedCaptureRef.current = captureRequestRef.current;
+    return true;
+  }, []);
 
   const start = useCallback(() => {
     // 开启时无条件清空上一条残留建议与会话记忆
     adviceRef.current = [];
     repeatRef.current = 1;
+    interventionsRef.current = [];
     lastAppliedAtRef.current = 0;
+    setInterventions([]);
     setAppliedNote(null);
     setSuggestion(null);
     setError(null);
@@ -243,12 +294,17 @@ export function useLiveSession(deps: LiveSessionDeps): LiveSession {
   }, [send]);
 
   const stop = useCallback(() => {
+    // 先留一份小结,再把记录清空 ——
+    // 否则用户随手拍一张,拍照流程会把"上次会话调过参"写进这张的复盘里
+    setLastSessionNote(summarizeInterventions(interventionsRef.current));
+    interventionsRef.current = [];
+    setInterventions([]);
+    setAppliedNote(null);
     send({ type: 'STOP' });
   }, [send]);
 
-  const cancel = useCallback(() => {
-    send({ type: 'CANCEL' });
-  }, [send]);
+  /** 拍照流程要在快门那一刻取走干预记录 */
+  const getInterventions = useCallback(() => interventionsRef.current, []);
 
   const retry = useCallback(() => {
     setError(null);
@@ -275,10 +331,14 @@ export function useLiveSession(deps: LiveSessionDeps): LiveSession {
       paused: state.paused,
       active: isSessionActive(state),
       appliedNote,
+      interventions,
+      lastSessionNote,
+      getInterventions,
       digest,
       start,
       stop,
-      cancel,
+      captureRequest,
+      consumeCaptureRequest,
       retry,
       clearError,
       reportError,
@@ -287,6 +347,16 @@ export function useLiveSession(deps: LiveSessionDeps): LiveSession {
       tick,
       resetAfterSceneChange,
     }),
-    [state, suggestion, analyzing, error, appliedNote, digest, start, stop, cancel, retry, clearError, reportError, getLastRunAt, shouldTick, tick, resetAfterSceneChange],
+    [
+      state,
+      suggestion,
+      analyzing,
+      error,
+      appliedNote,
+      interventions,
+      lastSessionNote,
+      getInterventions,
+      captureRequest,
+      consumeCaptureRequest, digest, start, stop, retry, clearError, reportError, getLastRunAt, shouldTick, tick, resetAfterSceneChange],
   );
 }

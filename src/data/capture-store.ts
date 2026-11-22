@@ -1,3 +1,4 @@
+import type { Intervention } from '@/domain/guidance/interventions';
 import type { PhotoMeta } from '@/domain/shared/exif';
 import type { AdjustParams, CaptureResult, SceneId } from '@/domain/shared/types';
 
@@ -17,6 +18,10 @@ export type LastCapture = {
   lastSuggestion?: { headline: string; action: string } | null;
   /** 拍照时选的场景(复盘页用来显示"按什么标准点评") */
   scene?: SceneId;
+  /** 这次拍摄 AI 动过什么(调参 / 自动按快门) */
+  interventions?: Intervention[];
+  /** 上一张同场景照片的分数(复盘页用来显示涨跌) */
+  previous?: { score: number; at: number } | null;
 };
 
 let last: LastCapture | null = null;

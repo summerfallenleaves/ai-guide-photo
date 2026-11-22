@@ -1,3 +1,4 @@
+import type { Intervention } from '@/domain/guidance/interventions';
 import type { SceneId } from '@/domain/shared/types';
 import { loadSceneReferences } from '@/infra/reference-images';
 import * as Haptics from 'expo-haptics';
@@ -10,7 +11,7 @@ import { analyze } from '@/infra/ai';
 import { setLastCapture, setReviewState } from '@/data/capture-store';
 import type { CameraLimits } from '@/infra/ai/client';
 import type { PhotoMeta } from '@/domain/shared/exif';
-import { addHistoryEntry, loadHistory, persistPhoto, updateHistoryEntry } from '@/data/history';
+import { addHistoryEntry, getHistory, loadHistory, persistPhoto, updateHistoryEntry } from '@/data/history';
 import { saveToAlbum } from '@/infra/media';
 import { takePicture } from '@/infra/camera/native-camera2';
 
@@ -27,6 +28,8 @@ export type CaptureFlowDeps = {
   getSessionAdvice: () => string | null;
   /** 当前场景:点评要按对应标准打分 */
   getScene: () => SceneId;
+  /** 这次拍摄 AI 动过什么(来自取景会话) */
+  getInterventions: () => Intervention[];
   /** 快门前的最后一条建议,点评时用来对照"用户有没有照做" */
   getLastSuggestion: () => { headline: string; action: string } | null;
   onError: (message: string) => void;
@@ -101,7 +104,19 @@ export function useCaptureFlow(deps: CaptureFlowDeps): CaptureFlow {
 
       // 照片先落地:立刻进复盘页
       const lastSuggestion = d.getLastSuggestion();
-      setLastCapture({ uri: stableUri, saved, meta: photoMeta, lastSuggestion });
+      // 取景会话里 AI 调了什么、有没有自动按快门:写进复盘与历史,用户可事后查
+      const interventions = d.getInterventions();
+      const scene = d.getScene();
+
+      // 先把历史读上来再找"上一张同场景" —— 否则冷启动后第一张会拿不到对比数据
+      await loadHistory();
+      const previousEntry = getHistory().find(
+        (item) => item.scene === scene && typeof item.result?.score === 'number',
+      );
+      const previous = previousEntry?.result?.score != null
+        ? { score: previousEntry.result.score, at: previousEntry.createdAt }
+        : null;
+      setLastCapture({ uri: stableUri, saved, meta: photoMeta, lastSuggestion, scene, interventions, previous });
       // 没有 API Key 就不发请求 —— 宁可明说"没有点评",也别让复盘页转圈到超时
       setReviewState(
         d.hasApiKey
@@ -116,14 +131,14 @@ export function useCaptureFlow(deps: CaptureFlowDeps): CaptureFlow {
       const mySeq = ++reviewSeq.current;
       const photoUri = stableUri;
 
-      await loadHistory();
       addHistoryEntry({
         id: entryId,
         uri: stableUri,
         createdAt: Date.now(),
         savedToAlbum: saved,
         mediaId,
-        scene: d.getScene(),
+        scene,
+        interventions,
         meta: photoMeta,
         status: 'analyzing',
       });
@@ -148,7 +163,7 @@ export function useCaptureFlow(deps: CaptureFlowDeps): CaptureFlow {
             meta: photoMeta,
             lastLiveSuggestion: lastSuggestion,
             sessionAdvice: d.getSessionAdvice(),
-            scene: d.getScene(),
+            scene,
             limits: d.limits(),
           });
           if (mySeq !== reviewSeq.current) return; // 已经又拍了一张,丢弃旧结果

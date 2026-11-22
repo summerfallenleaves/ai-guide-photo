@@ -4,15 +4,47 @@ import { useEffect, useSyncExternalStore } from 'react';
 
 import { Asset } from 'expo-media-library';
 
+import type { Intervention } from '@/domain/guidance/interventions';
 import { toHistoryCopy } from '@/infra/analysis-image';
 import type { PhotoMeta } from '@/domain/shared/exif';
 import type { CaptureResult, SceneId } from '@/domain/shared/types';
 
 const STORAGE_KEY = 'history.v1';
-/** 只保留最近多少天(按自然日算) */
-export const RETENTION_DAYS = 7;
-/** 安全上限:防止某天密集拍摄把存储撑爆,正常不会触发 */
-const MAX_ENTRIES = 200;
+
+/**
+ * 保留策略:天数和条数**谁先到就按谁裁**。
+ *
+ * 只按天数是不够的 —— 一天拍 50 张,30 天就是 1500 张;
+ * 只按条数也不够 —— 一周拍 3 张的人永远不会被"条数"裁剪,但记录会一直留着。
+ * 两者都由设置页配置。
+ */
+export type HistoryConfig = { retentionDays: number; maxEntries: number };
+
+const DEFAULT_CONFIG: HistoryConfig = { retentionDays: 30, maxEntries: 200 };
+let config: HistoryConfig = DEFAULT_CONFIG;
+/**
+ * 是否已经由设置注入过保留策略。
+ *
+ * 冷启动时 `loadHistory()` 可能先于设置读取完成(子组件 effect 早于父组件),
+ * 那时配置还是默认值 —— 如果按默认的 30 天裁剪,用户设的 90 天记录会被**误删**。
+ * 所以:**没配置过就不裁剪**,等 `configureHistory()` 注入后再裁。
+ */
+let configured = false;
+
+export function getHistoryConfig(): HistoryConfig {
+  return config;
+}
+
+/** 设置改变时调用:立即按新策略裁一次并落盘 */
+export function configureHistory(next: HistoryConfig): void {
+  config = next;
+  configured = true;
+  // 注入后立刻按新策略裁一次(包括"之前没裁过"的情况)
+  if (pruneEntries()) {
+    persist();
+    emit();
+  }
+}
 const DIR_NAME = 'history';
 
 export type HistoryEntry = {
@@ -27,6 +59,8 @@ export type HistoryEntry = {
   imageGone?: boolean;
   /** 拍照时选的场景(复盘页用来显示"按什么标准点评") */
   scene?: SceneId;
+  /** 这次拍摄 AI 动过什么(调参 / 自动按快门) */
+  interventions?: Intervention[];
   meta: PhotoMeta | null;
   status: 'analyzing' | 'done' | 'failed';
   result?: CaptureResult;
@@ -69,26 +103,34 @@ export async function persistPhoto(uri: string, id: string, width = 0, height = 
   return dest.uri;
 }
 
-/** 过期判定:早于「今天往前数 RETENTION_DAYS 天的零点」就算过期 */
-const RETENTION_MS = RETENTION_DAYS * 24 * 60 * 60 * 1000;
-
 function isExpired(entry: HistoryEntry, now = Date.now()): boolean {
-  return now - entry.createdAt > RETENTION_MS;
+  return now - entry.createdAt > config.retentionDays * 24 * 60 * 60 * 1000;
 }
 
-/** 淘汰过期条目并删掉对应照片,返回是否有变化 */
-function pruneExpired(): boolean {
+/** 按「天数 + 条数」淘汰并删掉对应照片,返回是否有变化 */
+function pruneEntries(): boolean {
   const now = Date.now();
-  const kept: HistoryEntry[] = [];
   let changed = false;
+
+  const kept: HistoryEntry[] = [];
   for (const entry of entries) {
     if (isExpired(entry, now)) {
-      deletePhoto(entry.uri);
+      if (entry.uri) deletePhoto(entry.uri);
       changed = true;
     } else {
       kept.push(entry);
     }
   }
+
+  // 条数上限:超出的按时间从旧到新删(entries 已按时间倒序)
+  if (kept.length > config.maxEntries) {
+    for (const dropped of kept.slice(config.maxEntries)) {
+      if (dropped.uri) deletePhoto(dropped.uri);
+    }
+    kept.length = config.maxEntries;
+    changed = true;
+  }
+
   if (changed) entries = kept;
   return changed;
 }
@@ -128,8 +170,9 @@ export async function loadHistory(): Promise<void> {
             }
             return e;
           });
-          // 超过保留期的记录在启动时清掉
-          if (pruneExpired()) {
+          // 超过保留期的记录在启动时清掉;但必须等设置注入过保留策略再裁,
+          // 否则会用默认值把用户配置的长保留期记录误删
+          if (configured && pruneEntries()) {
             void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(entries)).catch(() => {});
           }
         }
@@ -256,9 +299,8 @@ export function useHistoryLoaded(): boolean {
 
 export function addHistoryEntry(entry: HistoryEntry) {
   entries = [entry, ...entries];
-  pruneExpired();
-  for (const dropped of entries.slice(MAX_ENTRIES)) deletePhoto(dropped.uri);
-  entries = entries.slice(0, MAX_ENTRIES);
+  // pruneEntries 同时处理「天数」和「条数」,不需要再截断一次
+  pruneEntries();
   emit();
   persist();
 }

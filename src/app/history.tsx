@@ -10,7 +10,7 @@ import {
   removeHistoryEntry,
   removeImageGoneEntries,
   syncWithAlbum,
-  RETENTION_DAYS,
+  getHistoryConfig,
   useHistory,
   type HistoryEntry,
 } from '@/data/history';
@@ -53,6 +53,7 @@ function buildSections(entries: HistoryEntry[]): Section[] {
 /** 拍照历史:按天分组,只保留最近 7 天 */
 export default function HistoryScreen() {
   const entries = useHistory();
+  const { retentionDays } = getHistoryConfig();
   const sections = useMemo(() => buildSections(entries), [entries]);
   const stats = useMemo(() => computeHistoryStats(entries), [entries]);
 
@@ -74,7 +75,14 @@ export default function HistoryScreen() {
   }, []);
 
   const openEntry = (entry: HistoryEntry) => {
-    setLastCapture({ uri: entry.uri, saved: entry.savedToAlbum, meta: entry.meta, scene: entry.scene });
+    setLastCapture({
+      uri: entry.uri,
+      saved: entry.savedToAlbum,
+      meta: entry.meta,
+      scene: entry.scene,
+      // 干预记录也要带上,否则从历史进复盘时「拍摄时 AI 调过 N 次」那行会消失
+      interventions: entry.interventions,
+    });
     if (entry.status === 'done' && entry.result) {
       setReviewState({ status: 'done', result: entry.result });
     } else if (entry.status === 'failed') {
@@ -95,9 +103,9 @@ export default function HistoryScreen() {
           <Text style={styles.title}>拍照历史</Text>
           <Text style={styles.subtitle}>
             {entries.length > 0
-              ? `${entries.length} 张 · 保留最近 ${RETENTION_DAYS} 天` +
+              ? `${entries.length} 张 · 保留最近 ${retentionDays} 天` +
                 (goneCount > 0 ? ` · ${goneCount} 张相册已删` : '')
-              : `保留最近 ${RETENTION_DAYS} 天`}
+              : `保留最近 ${retentionDays} 天`}
           </Text>
         </View>
         {goneCount > 0 ? (
@@ -117,7 +125,7 @@ export default function HistoryScreen() {
         <View style={styles.empty}>
           <Text style={styles.emptyTitle}>还没有记录</Text>
           <Text style={styles.emptyBody}>
-            拍下的照片和当时的点评会自动留在这里,按天分组,只保留最近 {RETENTION_DAYS} 天。
+            拍下的照片和当时的点评会自动留在这里,按天分组,只保留最近 {retentionDays} 天。
           </Text>
         </View>
       ) : (

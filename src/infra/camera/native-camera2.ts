@@ -39,6 +39,10 @@ export type Camera2CapsFull = Camera2Caps & {
   evStep?: number;
   /** SENSOR_COLOR_TRANSFORM1(传感器 RGB→XYZ,行优先 9 个数) */
   colorTransform?: number[];
+  /** 设备支持的自动对焦模式(不在列表里的不显示) */
+  afModes?: string[];
+  /** 设备支持的白平衡预设 */
+  awbPresets?: string[];
 };
 
 export type Camera2Params = {
@@ -62,6 +66,8 @@ type Subscription = { remove: () => void };
 type Camera2NativeModule = {
   takePicture(): Promise<{ path: string; rotation: number }>;
   grabPreview(targetWidth: number, quality: number): Promise<string>;
+  setCaptureOptions(afMode: string | null, awbMode: string | null): void;
+  grabHistogram(): Promise<number[]>;
   setManual(
     iso: number | null,
     exposureNs: number | null,
@@ -102,6 +108,22 @@ export async function takePicture(): Promise<{ path: string; rotation: number }>
 export async function grabPreview(targetWidth = 1024, quality = 60): Promise<string> {
   if (!native) throw new Error('当前环境没有原生相机模块');
   return native.grabPreview(targetWidth, quality);
+}
+
+/** 预览的亮度直方图(32 个桶);面板打开时用来画分布 */
+export async function grabHistogram(): Promise<number[]> {
+  if (!native) return [];
+  try {
+    return await native.grabHistogram();
+  } catch {
+    // 画不出直方图不该影响拍摄
+    return [];
+  }
+}
+
+/** 设置 AF 模式 / AWB 预设(专业面板的两个新轴);传 null 表示回到自动 */
+export function setCaptureOptions(options: { afMode?: string | null; awbMode?: string | null }): void {
+  native?.setCaptureOptions(options.afMode ?? null, options.awbMode ?? null);
 }
 
 /** 设置手动参数;某个轴传 null 表示回到自动 */

@@ -92,6 +92,21 @@ class Camera2Module : Module() {
       Camera2Bus.activeView?.focusAt(x, y)
     }
 
+    AsyncFunction("grabHistogram") { promise: Promise ->
+      val view = Camera2Bus.activeView
+      if (view == null) {
+        promise.reject("no_view", "相机还没准备好", null)
+        return@AsyncFunction
+      }
+      view.grabHistogram { bins, error ->
+        if (bins != null) promise.resolve(bins) else promise.reject("histogram_failed", error?.message ?: "取直方图失败", error)
+      }
+    }
+
+    Function("setCaptureOptions") { afMode: String?, awbMode: String? ->
+      Camera2Bus.activeView?.setCaptureOptions(afMode = afMode, awbMode = awbMode)
+    }
+
     Function("setManual") { iso: Int?, exposureNs: Double?, focusDiopters: Double?, kelvin: Int? ->
       Camera2Bus.activeView?.setManual(
         iso = iso,

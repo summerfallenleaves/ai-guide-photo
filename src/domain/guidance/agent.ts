@@ -7,15 +7,19 @@ import type { Dim, SceneId } from '@/domain/shared/types';
  * 取景 Agent 的决策内核。
  *
  * 这是一个**纯状态机**:输入"当前状态 + 事件 + 护栏条件",输出"下一个状态 + 是否该按快门"。
- * 所有副作用(抓帧、调模型、倒计时、真按快门)都在 `hooks/use-live-session.ts` 里,
+ * 所有副作用(抓帧、调模型、真按快门)都在 `hooks/use-live-session.ts` 里,
  * 这里只做判断,所以可以完整单测。
  *
  * 为什么用状态机而不是"if 判断散在 hook 里":
- * 会话有明确的起止和一串互斥阶段(idle / observing / counting),散着写很容易出现
- * "倒计时没结束时又来一轮分析"这类状态错乱。
+ * 会话有明确的起止和互斥阶段(idle / observing),散着写很容易出现
+ * "拍摄过程中又来一轮分析"这类状态错乱。
+ *
+ * **没有倒计时**:连续两轮 ready 就直接按快门。
+ * 用户想要控制权时,关掉设置里的「自动拍摄」或结束会话即可 ——
+ * 中间再塞一个 3 秒倒计时,既多一次点击,又让"AI 替我拍"这件事变得半吊子。
  */
 
-export type Phase = 'idle' | 'observing' | 'counting';
+export type Phase = 'idle' | 'observing';
 
 export type SessionState = {
   phase: Phase;
@@ -27,8 +31,6 @@ export type SessionState = {
   failures: number;
   /** 暂停(专业面板展开 / App 后台 / 连续失败) */
   paused: boolean;
-  /** 倒计时剩余秒数,只在 counting 时有意义 */
-  countdown: number;
   /** 当前的护栏条件(由页面/设置同步进来,状态机据此判断能不能拍) */
   guard: CaptureGuard;
 };
@@ -37,8 +39,6 @@ export type SessionState = {
 export const MAX_ADVICE = 12;
 /** 需要连续几轮"可以拍了"才允许拍摄 */
 export const READY_STREAK_REQUIRED = 2;
-/** 自动拍摄前的倒计时秒数 */
-export const COUNTDOWN_SECONDS = 3;
 /** 连续失败这么多次就暂停 */
 export const MAX_FAILURES = 3;
 
@@ -48,7 +48,6 @@ export const INITIAL_STATE: SessionState = {
   rounds: 0,
   failures: 0,
   paused: false,
-  countdown: 0,
   guard: { autoCapture: false, blocked: true },
 };
 
@@ -59,8 +58,6 @@ export type SessionEvent =
   | { type: 'ROUND_FAIL' }
   | { type: 'PAUSE' }
   | { type: 'RESUME' }
-  | { type: 'TICK' }
-  | { type: 'CANCEL' }
   | { type: 'GUARD'; autoCapture: boolean; blocked: boolean }
   /** 换了场景:标准变了,连续 ready 必须重新攒;历史不动 */
   | { type: 'RESET_READY' };
@@ -75,11 +72,11 @@ export type CaptureGuard = {
 
 export type ReduceResult = {
   state: SessionState;
-  /** true = 这一刻应该按快门(整个会话只可能为 true 一次) */
+  /** true = 这一刻应该按快门(一次会话内可能多次:拍完用户继续开会话才有多张) */
   capture: boolean;
 };
 
-/** 进入倒计时(即允许自动拍摄)的唯一判据 */
+/** 允许自动拍摄的唯一判据(过了就立刻拍,不再等待) */
 export function shouldArmCapture(state: SessionState, guard: CaptureGuard): boolean {
   return (
     state.phase === 'observing' &&
@@ -129,55 +126,18 @@ export function reduce(state: SessionState, event: SessionEvent): ReduceResult {
       };
 
       if (shouldArmCapture(next, next.guard)) {
-        return {
-          state: { ...next, phase: 'counting', countdown: COUNTDOWN_SECONDS },
-          capture: false,
-        };
+        // 立刻拍:streak 清零,避免拍摄流程还没走完又来一轮"可以拍了"重复触发
+        return { state: { ...next, readyStreak: 0 }, capture: true };
       }
       return { state: next, capture: false };
     }
 
-    case 'TICK': {
-      if (state.phase !== 'counting') return { state, capture: false };
-      if (state.countdown <= 0) return { state, capture: false };
-      const countdown = state.countdown - 1;
-      if (countdown > 0) return { state: { ...state, countdown }, capture: false };
-      // 归零:交给调用方去按快门;重复 TICK 不会再次触发
-      return { state: { ...state, countdown: 0 }, capture: true };
-    }
-
-    case 'CANCEL': {
-      if (state.phase !== 'counting') return { state, capture: false };
-      // 取消后要重新攒两轮"可以拍"
-      return {
-        state: { ...state, phase: 'observing', countdown: 0, readyStreak: 0, paused: false },
-        capture: false,
-      };
-    }
-
-    case 'PAUSE': {
-      const base: SessionState = {
-        ...state,
-        paused: true,
-        // 倒计时期间被遮挡:取消拍摄,回到观察状态
-        phase: state.phase === 'counting' ? 'observing' : state.phase,
-        countdown: 0,
-        readyStreak: state.phase === 'counting' ? 0 : state.readyStreak,
-      };
-      return { state: base, capture: false };
-    }
+    case 'PAUSE':
+      // 被遮挡(面板/后台)就暂停观察;连续 ready 必须重新攒
+      return { state: { ...state, paused: true, readyStreak: 0 }, capture: false };
 
     case 'RESET_READY':
-      return {
-        state: {
-          ...state,
-          readyStreak: 0,
-          // 倒计时中换场景:取消这次拍摄
-          phase: state.phase === 'counting' ? 'observing' : state.phase,
-          countdown: 0,
-        },
-        capture: false,
-      };
+      return { state: { ...state, readyStreak: 0 }, capture: false };
 
     case 'GUARD':
       return {

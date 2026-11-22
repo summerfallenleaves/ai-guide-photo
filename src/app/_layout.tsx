@@ -5,10 +5,21 @@ import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { loadApiKey } from '@/data/secure-key';
-import { loadSettings } from '@/data/settings';
+import { configureHistory } from '@/data/history';
+import { getSettings, loadSettings, subscribeSettings } from '@/data/settings';
 import { palette } from '@/theme';
 
 export default function RootLayout() {
+  // 保留策略由设置决定:启动时注入一次,之后设置一变就重新裁
+  useEffect(() => {
+    const apply = (s: { retentionDays: number; maxHistoryEntries: number }) => {
+      configureHistory({ retentionDays: s.retentionDays, maxEntries: s.maxHistoryEntries });
+    };
+    apply(getSettings());
+    const off = subscribeSettings(() => apply(getSettings()));
+    return off;
+  }, []);
+
   useEffect(() => {
     void loadSettings();
     void loadApiKey();

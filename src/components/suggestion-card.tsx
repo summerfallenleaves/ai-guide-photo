@@ -24,6 +24,8 @@ type Props = {
   scene: SceneId;
   /** 切换场景 */
   onSceneChange: (next: SceneId) => void;
+  /** 上一次会话 AI 做了什么(没有就不显示) */
+  lastSessionNote?: string | null;
   onRefresh: () => void;
   onOpenSettings: () => void;
   /** 横屏空间紧张时用:去掉理由行、压缩字号与留白 */
@@ -41,6 +43,7 @@ export function SuggestionCard({
   appliedNote = null,
   scene,
   onSceneChange,
+  lastSessionNote = null,
   onRefresh,
   onOpenSettings,
   compact = false,
@@ -78,6 +81,7 @@ export function SuggestionCard({
             ? '连续给建议,画面可以拍时自动按快门。'
             : '每几秒看一眼画面,连续给建议;画面可以拍的时候会自动按下快门。'}
         </Text>
+        {lastSessionNote ? <Text style={styles.lastSessionNote}>{`上次取景:${lastSessionNote}`}</Text> : null}
       </View>
     );
   }
@@ -144,6 +148,11 @@ function ConfidenceDots({ value }: { value: number }) {
 }
 
 const styles = StyleSheet.create({
+  lastSessionNote: {
+    color: palette.textFaint,
+    fontSize: type.caption.fontSize,
+    marginTop: spacing.xs,
+  },
   sceneHint: {
     color: palette.textFaint,
     fontSize: type.caption.fontSize,

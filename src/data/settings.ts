@@ -21,6 +21,10 @@ export type AppSettings = {
   aiParams: boolean;
   /** 上次选的拍摄场景(下次打开还停在这里) */
   scene: SceneId;
+  /** 历史保留天数(7 / 30 / 90) */
+  retentionDays: number;
+  /** 历史条数上限 —— 天数和条数谁先到就按谁裁 */
+  maxHistoryEntries: number;
   /**
    * 语音播报取景建议。
    * **默认关闭** —— 户外/公共场合出声可能打扰别人,必须用户主动打开。
@@ -30,6 +34,13 @@ export type AppSettings = {
 
 export const INTERVAL_MIN = 3;
 export const INTERVAL_MAX = 10;
+
+/** 保留期可选值(天) */
+export const RETENTION_OPTIONS = [7, 30, 90] as const;
+/** 条数上限可选值 */
+export const MAX_ENTRIES_OPTIONS = [100, 200, 500] as const;
+export const DEFAULT_RETENTION_DAYS = 30;
+export const DEFAULT_MAX_ENTRIES = 200;
 
 const SCENE_IDS: SceneId[] = ['portrait', 'landscape', 'food', 'street', 'other'];
 function isSceneId(value: unknown): value is SceneId {
@@ -45,6 +56,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   autoCapture: true,
   aiParams: true,
   scene: 'other',
+  retentionDays: DEFAULT_RETENTION_DAYS,
+  maxHistoryEntries: DEFAULT_MAX_ENTRIES,
   voiceGuide: false,
 };
 
@@ -100,6 +113,12 @@ function sanitize(input: Partial<AppSettings>): AppSettings {
     autoCapture: typeof input.autoCapture === 'boolean' ? input.autoCapture : DEFAULT_SETTINGS.autoCapture,
     aiParams: typeof input.aiParams === 'boolean' ? input.aiParams : DEFAULT_SETTINGS.aiParams,
     scene: isSceneId(input.scene) ? input.scene : DEFAULT_SETTINGS.scene,
+    retentionDays: (RETENTION_OPTIONS as readonly number[]).includes(Number(input.retentionDays))
+      ? Number(input.retentionDays)
+      : DEFAULT_SETTINGS.retentionDays,
+    maxHistoryEntries: (MAX_ENTRIES_OPTIONS as readonly number[]).includes(Number(input.maxHistoryEntries))
+      ? Number(input.maxHistoryEntries)
+      : DEFAULT_SETTINGS.maxHistoryEntries,
   };
 }
 

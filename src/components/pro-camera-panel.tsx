@@ -11,6 +11,10 @@ export type ProSelection = {
   shutterNs: number | null;
   focusDiopters: number | null;
   kelvin: number | null;
+  /** 自动对焦模式:null = 用设备默认(continuous 优先) */
+  afMode: string | null;
+  /** 白平衡预设:null = 自动 */
+  awbMode: string | null;
 };
 
 export const AUTO_SELECTION: ProSelection = {
@@ -19,6 +23,8 @@ export const AUTO_SELECTION: ProSelection = {
   shutterNs: null,
   focusDiopters: null,
   kelvin: null,
+  afMode: null,
+  awbMode: null,
 };
 
 const SHUTTER_PRESETS: { label: string; ns: number }[] = [
@@ -38,10 +44,26 @@ const FOCUS_PRESETS: { label: string; diopters: number }[] = [
 ];
 
 const WB_PRESETS = [3000, 4000, 5500, 6500];
+/** 常见档位;超出设备最大变焦的会被过滤掉 */
+const ZOOM_PRESETS = [1, 2, 3, 5];
+const HISTOGRAM_HEIGHT = 44;
+/** 设备支持时才会显示 */
+const AF_LABELS: Record<string, string> = { auto: '单次', continuous: '连续' };
+const AWB_LABELS: Record<string, string> = {
+  incandescent: '白炽灯',
+  daylight: '日光',
+  cloudy: '阴天',
+  shade: '阴影',
+};
 const ISO_PRESETS = [100, 200, 400, 800];
 
 type Props = {
   visible: boolean;
+  /** 32 桶亮度直方图;空数组表示暂时拿不到 */
+  histogram: number[];
+  /** 当前变焦倍数(手势也会改它) */
+  zoom: number;
+  onZoom: (ratio: number) => void;
   caps: Camera2CapsFull | null;
   liveParams: Camera2Params | null;
   selection: ProSelection;
@@ -55,7 +77,17 @@ type Props = {
  * **半透明**是刻意的:调参数时要能同时看到画面变化,不能把取景挡住。
  * 每一轴都是「自动 / 若干档位」,点一下立即生效。
  */
-export function ProCameraPanel({ visible, caps, liveParams, selection, onChange, onClose }: Props) {
+export function ProCameraPanel({
+  visible,
+  histogram,
+  zoom,
+  onZoom,
+  caps,
+  liveParams,
+  selection,
+  onChange,
+  onClose,
+}: Props) {
   if (!visible) return null;
 
   const isoCandidates = caps
@@ -80,7 +112,21 @@ export function ProCameraPanel({ visible, caps, liveParams, selection, onChange,
           </View>
         </View>
 
+        {histogram.length > 0 ? <Histogram bins={histogram} /> : null}
+
         <ScrollView horizontal={false} showsVerticalScrollIndicator={false} style={styles.scroll}>
+          <Row
+            label="变焦"
+            isAuto={zoom <= 1.01}
+            onAuto={() => onZoom(1)}
+            options={ZOOM_PRESETS.filter((z) => z <= (caps?.maxZoom ?? 1) + 0.01).map((z) => ({
+              key: String(z),
+              label: `${z}x`,
+              active: Math.abs(zoom - z) < 0.05,
+              onPress: () => onZoom(z),
+            }))}
+          />
+
           <Row
             label="曝光补偿"
             isAuto={selection.ev === null}
@@ -129,23 +175,73 @@ export function ProCameraPanel({ visible, caps, liveParams, selection, onChange,
             }))}
           />
 
+          {((caps?.afModes?.length ?? 0) > 0) ? (
+            <Row
+              label="对焦模式"
+              isAuto={selection.afMode === null}
+              onAuto={() => onChange({ ...selection, afMode: null })}
+              options={(caps?.afModes ?? []).map((mode) => ({
+                key: mode,
+                label: AF_LABELS[mode] ?? mode,
+                active: selection.afMode === mode,
+                onPress: () => onChange({ ...selection, afMode: mode }),
+              }))}
+            />
+          ) : null}
+
           <Row
             label="白平衡"
-            isAuto={selection.kelvin === null}
-            onAuto={() => onChange({ ...selection, kelvin: null })}
+            isAuto={selection.kelvin === null && selection.awbMode === null}
+            onAuto={() => onChange({ ...selection, kelvin: null, awbMode: null })}
             options={WB_PRESETS.map((k) => ({
               key: String(k),
               label: `${k}K`,
               active: selection.kelvin === k,
-              onPress: () => onChange({ ...selection, kelvin: k }),
+              onPress: () => onChange({ ...selection, kelvin: k, awbMode: null }),
             }))}
           />
+
+          {((caps?.awbPresets?.length ?? 0) > 0) ? (
+            <Row
+              label="白平衡预设"
+              isAuto={selection.awbMode === null}
+              onAuto={() => onChange({ ...selection, awbMode: null })}
+              options={(caps?.awbPresets ?? []).map((preset) => ({
+                key: preset,
+                label: AWB_LABELS[preset] ?? preset,
+                active: selection.awbMode === preset,
+                onPress: () => onChange({ ...selection, awbMode: preset, kelvin: null }),
+              }))}
+            />
+          ) : null}
 
           <Text style={styles.hint}>
             ISO 和快门要同时手动才生效(只给一个会自动回到自动曝光)。
           </Text>
         </ScrollView>
       </View>
+    </View>
+  );
+}
+
+/** 直方图:等宽竖条,按最大值归一化 */
+function Histogram({ bins }: { bins: number[] }) {
+  const max = Math.max(...bins, 1);
+  return (
+    <View style={styles.histogram}>
+      {bins.map((value, index) => (
+        <View
+          key={index}
+          style={[
+            styles.histogramBar,
+            {
+              height: Math.max(1, Math.round((value / max) * HISTOGRAM_HEIGHT)),
+              // 两端压暗:过曝和死黑都该一眼看出
+              backgroundColor: index < 2 || index > bins.length - 3 ? palette.danger : palette.textDim,
+            },
+          ]}
+        />
+      ))}
     </View>
   );
 }
@@ -191,6 +287,15 @@ function Chip({ label, active, onPress }: { label: string; active: boolean; onPr
 }
 
 const styles = StyleSheet.create({
+  histogram: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    height: HISTOGRAM_HEIGHT,
+    gap: 1,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.xxs,
+  },
+  histogramBar: { flex: 1, borderRadius: 1 },
   wrap: {
     position: 'absolute',
     left: 0,

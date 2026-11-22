@@ -91,3 +91,48 @@ describe('strengths', () => {
     expect(capture({ score: 80 }).strengths).toEqual([]);
   });
 });
+
+describe('点评的维度分与最该改的一件事', () => {
+  const base = {
+    verdict: 'tweak',
+    score: 72,
+    headline: '花够大,但光太平',
+    improvements: ['把花挪到窗边', '手机再靠近一点'],
+    confidence: 0.8,
+  };
+
+  it('topFix 缺失时退回第一条改进', () => {
+    const out = capture(base) as unknown as { topFix: string | null };
+    expect(out.topFix).toBe('把花挪到窗边');
+  });
+
+  it('topFix 有值时照用', () => {
+    const out = capture({ ...base, topFix: '挪到窗边,让侧光' }) as unknown as { topFix: string | null };
+    expect(out.topFix).toBe('挪到窗边,让侧光');
+  });
+
+  it('三个维度齐全时保留', () => {
+    const out = capture({
+      ...base,
+      dimensions: { composition: 75, light: 65, subject: 78 },
+    }) as unknown as { dimensions: unknown };
+    expect(out.dimensions).toEqual({ composition: 75, light: 65, subject: 78 });
+  });
+
+  it('维度平均与总分差太远时丢弃(不给自相矛盾的解释)', () => {
+    const out = capture({
+      ...base,
+      score: 90,
+      dimensions: { composition: 40, light: 40, subject: 40 },
+    }) as unknown as { dimensions: unknown };
+    expect(out.dimensions).toBeNull();
+  });
+
+  it('维度缺一项时整组丢弃', () => {
+    const out = capture({
+      ...base,
+      dimensions: { composition: 75, light: 65 },
+    }) as unknown as { dimensions: unknown };
+    expect(out.dimensions).toBeNull();
+  });
+});

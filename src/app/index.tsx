@@ -35,7 +35,7 @@ import { useCameraPermission } from '@/hooks/use-camera-permission';
 import { useCameraSession } from '@/hooks/use-camera-session';
 import type { SceneId } from '@/domain/shared/types';
 import type { Camera2Params } from '@/infra/camera/native-camera2';
-import { Camera2Preview } from '@/infra/camera/native-camera2';
+import { Camera2Preview, grabHistogram, setZoom as setZoomNative } from '@/infra/camera/native-camera2';
 import { thinkingOf, updateSettings, useSettings } from '@/data/settings';
 import { palette, radius, spacing, tabularNums, type, weight } from '@/theme';
 
@@ -182,7 +182,7 @@ export default function CameraScreen() {
 
   const { retry: retryLive, clearError, reportError } = live;
 
-  const { stop: stopSessionRaw, cancel: cancelCountdown } = live;
+  const { stop: stopSessionRaw } = live;
 
   /**
    * 换场景:标准变了,所以把"连续 ready"和重复计数清零,
@@ -260,6 +260,30 @@ export default function CameraScreen() {
     return () => sub.remove();
   }, [clearError, markNotReady]);
 
+  // 面板打开时取直方图:600ms 一次足够看出分布变化,也不会拖慢预览
+  const [histogram, setHistogram] = useState<number[]>([]);
+  useEffect(() => {
+    // 面板关着就不取;残留的旧数据在面板重新打开后 600ms 内就会被刷新
+    if (!proOpen || !session.ready) return;
+    let cancelled = false;
+    const tick = async () => {
+      const bins = await grabHistogram();
+      if (!cancelled) setHistogram(bins);
+    };
+    void tick();
+    const timer = setInterval(() => void tick(), 600);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [proOpen, session.ready]);
+
+  /** 面板里的变焦档位:和手势共用同一套状态 */
+  const applyZoom = useCallback((ratio: number) => {
+    setZoom(ratio);
+    setZoomNative(ratio);
+  }, []);
+
   const { previewGesture } = usePreviewGestures({
     getCaps: () => session.caps,
     rectRef: previewRectRef,
@@ -320,19 +344,22 @@ export default function CameraScreen() {
     getLastSuggestion: () => lastSuggestionRef.current,
     getSessionAdvice: live.digest,
     getScene: () => settings.scene,
+    getInterventions: live.getInterventions,
     onError: reportError,
     flash,
   });
 
   const shutter = useShutterTimer(() => void capture());
 
-  // 自动拍摄:倒计时归零时由页面按快门(副作用集中在页面,方便看清是谁在拍)
+  // 自动拍摄:AI 连续两轮"可以拍了"就立刻拍(没有倒计时)
+  // 谁按快门放在页面一处,状态机只负责给信号
   const cancelSession = live.stop;
+  const consumeCapture = live.consumeCaptureRequest;
   useEffect(() => {
-    if (live.state.phase !== 'counting' || live.state.countdown !== 0) return;
+    if (!consumeCapture()) return;
     void capture();
     cancelSession();
-  }, [live.state.phase, live.state.countdown, capture, cancelSession]);
+  }, [live.captureRequest, consumeCapture, capture, cancelSession]);
 
   if (!permission.checked) {
     return (
@@ -419,14 +446,6 @@ export default function CameraScreen() {
         </Pressable>
       ) : null}
 
-      {/* 自动拍摄倒计时:会话连续两轮"可以拍了"后出现,点任意处取消 */}
-      {live.state.phase === 'counting' ? (
-        <Pressable style={styles.countdownLayer} onPress={cancelCountdown}>
-          <Text style={styles.countdownText}>{live.state.countdown}</Text>
-          <Text style={styles.countdownHint}>自动拍摄,点任意处取消</Text>
-        </Pressable>
-      ) : null}
-
       {/* 变焦倍率提示:不在 1x 时才显示 */}
       {zoom > 1.05 ? (
         <View pointerEvents="none" style={styles.zoomPill}>
@@ -485,6 +504,7 @@ export default function CameraScreen() {
               appliedNote={live.appliedNote}
               scene={settings.scene}
               onSceneChange={changeScene}
+              lastSessionNote={live.active ? null : live.lastSessionNote}
               onStart={startSession}
               onStop={stopSession}
               onOpenSettings={() => router.push('/settings')}
@@ -529,6 +549,9 @@ export default function CameraScreen() {
 
           <ProCameraPanel
             visible={proOpen}
+            histogram={histogram}
+            zoom={zoom}
+            onZoom={applyZoom}
             caps={session.caps}
             liveParams={session.liveParams}
             selection={proSelection}

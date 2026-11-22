@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getLastCapture, getReviewState, setPendingAdjust, subscribeReviewState } from '@/data/capture-store';
+import { summarizeInterventions } from '@/domain/guidance/interventions';
 import { SCENES } from '@/domain/guidance/scenes';
 import { formatMeta } from '@/domain/shared/exif';
 import { formatShutterNs, parseShutterToNs } from '@/infra/camera/native-camera2';
@@ -25,6 +26,9 @@ export default function ReviewScreen() {
 
   // 优先用内存里那份,路由参数只作兜底
   const photoUri = captured?.uri ?? (params.uri ? String(params.uri) : '');
+  // 「拍摄时 AI 调过 2 次参数 · 由 AI 自动按快门」——没有干预就不显示
+  const interventionNote = summarizeInterventions(captured?.interventions ?? []);
+  const [moreOpen, setMoreOpen] = useState(false);
   const savedParam = params.saved ? String(params.saved) : '0';
 
   // 点评是异步补上的,订阅它
@@ -32,6 +36,19 @@ export default function ReviewScreen() {
   const review = reviewState.status === 'done' ? reviewState.result : null;
   const analyzing = reviewState.status === 'analyzing';
   const reviewError = reviewState.status === 'failed' ? reviewState.error : null;
+
+  // 复盘页的三件"有据可查":最该改的一件事、维度分、和上次比
+  const topFix = review?.topFix ?? review?.improvements?.[0] ?? null;
+  const moreFixes = (review?.improvements ?? []).filter((item) => item !== topFix);
+  const previousScore = captured?.previous?.score ?? null;
+  const scoreChange =
+    previousScore != null && review
+      ? (() => {
+          const delta = review.score - previousScore;
+          if (delta === 0) return '和上次一样';
+          return `比上次 ${delta > 0 ? '+' : ''}${delta} 分`;
+        })()
+      : null;
 
   const [savedState, setSavedState] = useState(captured ? captured.saved : savedParam === '1');
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -86,6 +103,7 @@ export default function ReviewScreen() {
           )}
         </View>
         <View style={styles.scoreMeta}>
+          {scoreChange ? <Text style={[styles.scoreChange, { color: scoreColor }]}>{scoreChange}</Text> : null}
           <Text style={styles.headline}>
             {analyzing
               ? 'AI 正在点评…'
@@ -117,6 +135,8 @@ export default function ReviewScreen() {
             <Text style={styles.sceneLine}>{`按「${SCENES[captured.scene]?.label ?? '其他'}」的标准点评`}</Text>
           ) : null}
 
+          {interventionNote ? <Text style={styles.sceneLine}>{interventionNote}</Text> : null}
+
           {saveError ? <Text style={styles.saveErrorText}>保存失败:{saveError}</Text> : null}
 
           {savedState ? null : (
@@ -138,6 +158,28 @@ export default function ReviewScreen() {
         </View>
       ) : review ? (
         <>
+          {/* 分数有据可查:三个维度分别多少 */}
+          {review.dimensions ? (
+            <View style={styles.dimensions}>
+              <Text style={styles.sectionTitle}>为什么是这个分</Text>
+              {(
+                [
+                  ['构图', review.dimensions.composition],
+                  ['光线', review.dimensions.light],
+                  ['主体', review.dimensions.subject],
+                ] as const
+              ).map(([label, value]) => (
+                <View key={label} style={styles.dimRow}>
+                  <Text style={styles.dimLabel}>{label}</Text>
+                  <View style={styles.dimTrack}>
+                    <View style={[styles.dimFill, { width: `${value}%` }]} />
+                  </View>
+                  <Text style={styles.dimValue}>{value}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+
           {/* 先肯定:让点评有平衡感,也提醒用户哪里是对的 */}
           {(review.strengths?.length ?? 0) > 0 ? (
             <View style={styles.strengthBox}>
@@ -148,15 +190,27 @@ export default function ReviewScreen() {
 
           {(review.improvements?.length ?? 0) > 0 ? (
             <View style={styles.improvements}>
-              <Text style={styles.sectionTitle}>下次这样拍</Text>
-              {review.improvements.map((item, index) => (
-                <View key={index} style={styles.improvementRow}>
-                  <View style={styles.indexBadge}>
-                    <Text style={styles.indexText}>{index + 1}</Text>
-                  </View>
-                  <Text style={styles.improvementText}>{item}</Text>
-                </View>
-              ))}
+              <Text style={styles.sectionTitle}>最该改的一件事</Text>
+              <Text style={styles.topFix}>{topFix}</Text>
+
+              {moreFixes.length > 0 ? (
+                <Pressable onPress={() => setMoreOpen((prev) => !prev)} hitSlop={8}>
+                  <Text style={styles.moreToggle}>
+                    {moreOpen ? '收起' : `另外 ${moreFixes.length} 条建议`}
+                  </Text>
+                </Pressable>
+              ) : null}
+
+              {moreOpen
+                ? moreFixes.map((item, index) => (
+                    <View key={index} style={styles.improvementRow}>
+                      <View style={styles.indexBadge}>
+                        <Text style={styles.indexText}>{index + 2}</Text>
+                      </View>
+                      <Text style={styles.improvementText}>{item}</Text>
+                    </View>
+                  ))
+                : null}
             </View>
           ) : review.verdict === 'keep' ? (
             <View style={styles.goodBox}>
@@ -244,6 +298,31 @@ function describeParams(p: { iso?: number; shutter?: string; wb?: number; focusM
 }
 
 const styles = StyleSheet.create({
+  scoreChange: { fontSize: type.caption.fontSize, fontWeight: weight.semibold, marginBottom: 2 },
+  dimensions: { gap: spacing.xs },
+  dimRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  dimLabel: { width: 32, color: palette.textDim, fontSize: type.caption.fontSize },
+  dimTrack: {
+    flex: 1,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: palette.fill,
+    overflow: 'hidden',
+  },
+  dimFill: { height: 6, borderRadius: 3, backgroundColor: palette.accent },
+  dimValue: { width: 26, textAlign: 'right', color: palette.text, fontSize: type.caption.fontSize },
+  topFix: {
+    color: palette.text,
+    fontSize: type.headline.fontSize,
+    fontWeight: weight.semibold,
+    lineHeight: 24,
+  },
+  moreToggle: {
+    color: palette.accent,
+    fontSize: type.callout.fontSize,
+    fontWeight: weight.medium,
+    marginTop: spacing.xs,
+  },
   sceneLine: {
     color: palette.textFaint,
     fontSize: type.caption.fontSize,

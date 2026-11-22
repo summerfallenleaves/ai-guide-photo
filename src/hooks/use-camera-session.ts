@@ -11,6 +11,7 @@ import {
   getCapabilities,
   grabPreview,
   parseShutterToNs,
+  setCaptureOptions,
   setExposureCompensation,
   setFlashMode,
   setManual,
@@ -157,6 +158,8 @@ export function useCameraSession(deps: CameraSessionDeps): CameraSession {
     // 用户亲自拨了参数 → 交出控制权,AI 不再自动调
     userManualRef.current = true;
     setExposureCompensation(selection.ev ?? 0);
+    // 对焦模式 / 白平衡预设:原生侧会按设备支持表静默降级
+    setCaptureOptions({ afMode: selection.afMode, awbMode: selection.awbMode });
 
     // 手动曝光要求 ISO 与快门同时有值;只选了一个就用当前实测值补齐
     let iso = selection.iso;

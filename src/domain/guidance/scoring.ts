@@ -36,6 +36,12 @@ export function __normalize(p: Record<string, unknown>, isCapture: boolean): Ana
     const maxImprovements = verdict === 'keep' ? 1 : verdict === 'tweak' ? 2 : 3;
     const improvements = allImprovements.slice(0, maxImprovements);
 
+    // topFix:模型没给就退化成第一条改进(它本来就已经按重要性排过)
+    const rawTopFix = typeof p.topFix === 'string' ? p.topFix.trim() : '';
+    const topFix = clip(rawTopFix, 40) || improvements[0] || null;
+
+    const dimensions = normalizeDimensions(p.dimensions, score);
+
     return {
       mode: 'capture',
       score,
@@ -45,6 +51,8 @@ export function __normalize(p: Record<string, unknown>, isCapture: boolean): Ana
       dim,
       dimLabel: DIM_LABELS[dim],
       improvements,
+      topFix,
+      dimensions,
       // keep 就不给参数,避免"很好但也建议改 ISO"这种自相矛盾
       params: verdict === 'keep' ? null : normalizeParams(p.params),
       confidence: clamp01(p.confidence, 0.6),
@@ -67,6 +75,30 @@ export function __normalize(p: Record<string, unknown>, isCapture: boolean): Ana
     // 取景也可以给参数,但真正下发前还要过 Agent 的护栏(见 param-policy)
     params: normalizeParams(p.params),
   };
+}
+
+/**
+ * 三个维度的分数。
+ *
+ * 模型漏给、给错类型、明显与总分矛盾(比如总分 80 但三维度都是 50)时,
+ * 退回"三个维度都等于总分" —— 宁可不给解释,也不要给一个自相矛盾的解释。
+ */
+function normalizeDimensions(raw: unknown, score: number): { composition: number; light: number; subject: number } | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const source = raw as Record<string, unknown>;
+  const pick = (key: string): number | null => {
+    const value = Number(source[key]);
+    return Number.isFinite(value) ? Math.min(100, Math.max(0, Math.round(value))) : null;
+  };
+  const composition = pick('composition');
+  const light = pick('light');
+  const subject = pick('subject');
+  if (composition == null || light == null || subject == null) return null;
+
+  const average = (composition + light + subject) / 3;
+  // 与总分差太远就认为不可信,不展示(阈值放得比较宽,避免误伤)
+  if (Math.abs(average - score) > 20) return null;
+  return { composition, light, subject };
 }
 
 /** verdict 兜底:模型漏给或给了非法值时,按分数推断,保证前后自洽 */

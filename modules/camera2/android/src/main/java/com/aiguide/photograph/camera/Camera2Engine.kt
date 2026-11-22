@@ -75,6 +75,10 @@ class Camera2Engine(
   private var exposureNs: Long? = null
   private var focusDiopters: Float? = null
   private var kelvin: Int? = null
+  /** 自动对焦模式:auto(单次) / continuous(连续);手动对焦不走这里 */
+  private var afMode: String? = null
+  /** 白平衡预设:auto / incandescent / daylight / cloudy / shade;色温手动不走这里 */
+  private var awbMode: String? = null
 
   var isAttached: Boolean = false
     private set
@@ -105,6 +109,19 @@ class Camera2Engine(
     }
     val maxZoom = c.get(CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM) ?: 1f
     val hasFlash = (c.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) ?: false)
+    // 专业面板要按设备能力显示:不支持的模式不展示,而不是点了没反应
+    val afAvailable = c.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES) ?: IntArray(0)
+    val afModes = buildList {
+      if (afAvailable.contains(CaptureRequest.CONTROL_AF_MODE_AUTO)) add("auto")
+      if (afAvailable.contains(CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)) add("continuous")
+    }
+    val awbAvailable = c.get(CameraCharacteristics.CONTROL_AWB_AVAILABLE_MODES) ?: IntArray(0)
+    val awbPresets = buildList {
+      if (awbAvailable.contains(CaptureRequest.CONTROL_AWB_MODE_INCANDESCENT)) add("incandescent")
+      if (awbAvailable.contains(CaptureRequest.CONTROL_AWB_MODE_DAYLIGHT)) add("daylight")
+      if (awbAvailable.contains(CaptureRequest.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT)) add("cloudy")
+      if (awbAvailable.contains(CaptureRequest.CONTROL_AWB_MODE_SHADE)) add("shade")
+    }
     val evRange = c.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE)
     val evStep = c.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_STEP)
     val evStepValue = if (evStep != null) evStep.toFloat() else 0.33333334f
@@ -123,6 +140,9 @@ class Camera2Engine(
       "exposureMinNs" to (expRange?.lower ?: 30_000L),
       "exposureMaxNs" to (expRange?.upper ?: 1_000_000_000L),
       "minFocusDistance" to minFocus,
+      // 面板按这个列表决定显示哪些模式
+      "afModes" to afModes,
+      "awbPresets" to awbPresets,
     )
   }
 
@@ -393,10 +413,10 @@ class Camera2Engine(
         b.set(CaptureRequest.LENS_FOCUS_DISTANCE, focusV)
       } catch (t: Throwable) {
         onError("手动对焦不被支持:${t.message}")
-        setAutoFocus(b, afModes)
+        setAutoFocusByMode(b, afModes)
       }
     } else {
-      setAutoFocus(b, afModes)
+      setAutoFocusByMode(b, afModes)
     }
 
     // --- 裁切区域(变焦 + 预览/拍照取景一致) ---
@@ -459,12 +479,43 @@ class Camera2Engine(
         b.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
       }
     } else {
-      b.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
+      val preset = awbPresetMode(awbMode)
+      val presetOk = preset != null && awbModes?.contains(preset) == true
+      try {
+        b.set(
+          CaptureRequest.CONTROL_AWB_MODE,
+          if (presetOk && preset != null) preset else CaptureRequest.CONTROL_AWB_MODE_AUTO,
+        )
+      } catch (t: Throwable) {
+        onError("白平衡预设不被支持:${t.message}")
+        b.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
+      }
     }
   }
 
-  private fun setAutoFocus(b: CaptureRequest.Builder, afModes: IntArray?) {
+  /** 面板上的白平衡预设 → CONTROL_AWB_MODE 常量 */
+  private fun awbPresetMode(name: String?): Int? = when (name) {
+    "incandescent" -> CaptureRequest.CONTROL_AWB_MODE_INCANDESCENT
+    "daylight" -> CaptureRequest.CONTROL_AWB_MODE_DAYLIGHT
+    "cloudy" -> CaptureRequest.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT
+    "shade" -> CaptureRequest.CONTROL_AWB_MODE_SHADE
+    else -> null
+  }
+
+  /**
+   * 自动对焦:按用户选的模式来。
+   *
+   * 设备不支持的模式一律**静默退回 continuous** —— 面板上已经按能力表过滤过,
+   * 这里再兜一层,避免某些 ROM 报的支持表不准导致预览直接失败。
+   */
+  private fun setAutoFocusByMode(b: CaptureRequest.Builder, afModes: IntArray?) {
+    val preferred = when (afMode) {
+      "auto" -> CaptureRequest.CONTROL_AF_MODE_AUTO
+      "continuous" -> CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE
+      else -> null
+    }
     val mode = when {
+      preferred != null && afModes?.contains(preferred) == true -> preferred
       afModes?.contains(CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE) == true ->
         CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE
       afModes?.contains(CaptureRequest.CONTROL_AF_MODE_AUTO) == true ->
@@ -553,6 +604,13 @@ class Camera2Engine(
     )
     // 解除手动对焦,回到自动,才能让这次"点按"生效
     focusDiopters = null
+    handler.post { applyRepeatingRequest() }
+  }
+
+  /** 只改 AF 模式 / AWB 预设(专业面板的两个新轴) */
+  fun setCaptureOptions(afModeValue: String?, awbModeValue: String?) {
+    afMode = afModeValue
+    awbMode = awbModeValue
     handler.post { applyRepeatingRequest() }
   }
 

@@ -212,6 +212,49 @@ class Camera2View(context: Context, appContext: AppContext) : ExpoView(context, 
     }
   }
 
+  /**
+   * 亮度直方图:32 个桶,0 = 全黑,31 = 全白。
+   *
+   * 用很小的缩略图统计(96×72)就够了 —— 直方图看的是分布形状,不是每个像素。
+   * 面板打开时每秒取几次,开销可以忽略。
+   */
+  fun grabHistogram(callback: (List<Int>?, Throwable?) -> Unit) {
+    post {
+      try {
+        // 直接让 TextureView 按 96×72 出图:不要先拿整张 1260×1680 的位图再缩,
+        // 那样每 600ms 会分配 8MB 级别的内存,面板开着时容易抖动
+        val small = textureView.getBitmap(96, 72) ?: run {
+          callback(null, IllegalStateException("预览还没就绪"))
+          return@post
+        }
+        val w = small.width
+        val h = small.height
+        if (w <= 0 || h <= 0) {
+          small.recycle()
+          callback(null, IllegalStateException("预览尺寸异常"))
+          return@post
+        }
+        val pixels = IntArray(w * h)
+        small.getPixels(pixels, 0, w, 0, 0, w, h)
+        small.recycle()
+
+        val bins = IntArray(32)
+        for (px in pixels) {
+          val r = (px shr 16) and 0xFF
+          val g = (px shr 8) and 0xFF
+          val b = px and 0xFF
+          // 人眼亮度权重,和常见的 luma 公式一致
+          val luma = (r * 299 + g * 587 + b * 114) / 1000
+          val bin = (luma * 32 / 256).coerceIn(0, 31)
+          bins[bin] += 1
+        }
+        callback(bins.toList(), null)
+      } catch (t: Throwable) {
+        callback(null, t)
+      }
+    }
+  }
+
   fun currentJpegRotation(): Int = engine?.jpegRotationDegrees() ?: 0
 
   fun setZoom(ratio: Float) = engine?.setZoom(ratio) ?: Unit
@@ -221,6 +264,10 @@ class Camera2View(context: Context, appContext: AppContext) : ExpoView(context, 
   fun setExposureCompensation(steps: Int) = engine?.setExposureCompensation(steps) ?: Unit
 
   fun focusAt(x: Float, y: Float) = engine?.focusAt(x, y) ?: Unit
+
+  fun setCaptureOptions(afMode: String?, awbMode: String?) {
+    engine?.setCaptureOptions(afMode, awbMode)
+  }
 
   fun setManual(iso: Int?, exposureNs: Long?, focusDiopters: Float?, kelvin: Int?) {
     engine?.setManual(iso, exposureNs, focusDiopters, kelvin)
