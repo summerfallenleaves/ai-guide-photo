@@ -1,5 +1,5 @@
-import { router } from 'expo-router';
-import { useEffect, useMemo } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useMemo } from 'react';
 import { Image, Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -8,6 +8,8 @@ import {
   clearHistory,
   loadHistory,
   removeHistoryEntry,
+  removeImageGoneEntries,
+  syncWithAlbum,
   RETENTION_DAYS,
   useHistory,
   type HistoryEntry,
@@ -54,12 +56,25 @@ export default function HistoryScreen() {
   const sections = useMemo(() => buildSections(entries), [entries]);
   const stats = useMemo(() => computeHistoryStats(entries), [entries]);
 
+  const goneCount = entries.filter((entry) => entry.imageGone).length;
+  const clearGone = () => {
+    removeImageGoneEntries();
+  };
+
+  // 方案 A:聚焦时和相册对一次账(最多 20 条)
+  // 相册里删掉的照片,把副本清掉并标记,记录本身保留
+  useFocusEffect(
+    useCallback(() => {
+      void syncWithAlbum(true);
+    }, []),
+  );
+
   useEffect(() => {
     void loadHistory();
   }, []);
 
   const openEntry = (entry: HistoryEntry) => {
-    setLastCapture({ uri: entry.uri, saved: entry.savedToAlbum, meta: entry.meta });
+    setLastCapture({ uri: entry.uri, saved: entry.savedToAlbum, meta: entry.meta, scene: entry.scene });
     if (entry.status === 'done' && entry.result) {
       setReviewState({ status: 'done', result: entry.result });
     } else if (entry.status === 'failed') {
@@ -79,10 +94,17 @@ export default function HistoryScreen() {
         <View style={styles.headerCenter}>
           <Text style={styles.title}>拍照历史</Text>
           <Text style={styles.subtitle}>
-            {entries.length > 0 ? `${entries.length} 张 · 保留最近 ${RETENTION_DAYS} 天` : `保留最近 ${RETENTION_DAYS} 天`}
+            {entries.length > 0
+              ? `${entries.length} 张 · 保留最近 ${RETENTION_DAYS} 天` +
+                (goneCount > 0 ? ` · ${goneCount} 张相册已删` : '')
+              : `保留最近 ${RETENTION_DAYS} 天`}
           </Text>
         </View>
-        {entries.length > 0 ? (
+        {goneCount > 0 ? (
+          <Pressable onPress={clearGone} hitSlop={12}>
+            <Text style={styles.clear}>清理{goneCount}条</Text>
+          </Pressable>
+        ) : entries.length > 0 ? (
           <Pressable onPress={clearHistory} hitSlop={12}>
             <Text style={styles.clear}>清空</Text>
           </Pressable>
@@ -142,7 +164,13 @@ function Row({ entry, onPress }: { entry: HistoryEntry; onPress: () => void }) {
 
   return (
     <Pressable onPress={onPress} style={styles.row}>
-      <Image source={{ uri: entry.uri }} style={styles.thumb} resizeMode="cover" />
+      {entry.imageGone ? (
+        <View style={[styles.thumb, styles.thumbGone]}>
+          <Text style={styles.thumbGoneText}>已删</Text>
+        </View>
+      ) : (
+        <Image source={{ uri: entry.uri }} style={styles.thumb} resizeMode="cover" />
+      )}
       <View style={styles.rowBody}>
         <View style={styles.rowTop}>
           <Text style={[styles.score, { color: scoreColor }]}>{score ?? '—'}</Text>
@@ -163,6 +191,14 @@ function Row({ entry, onPress }: { entry: HistoryEntry; onPress: () => void }) {
 }
 
 const styles = StyleSheet.create({
+  thumbGone: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: palette.fill,
+    borderWidth: 1,
+    borderColor: palette.border,
+  },
+  thumbGoneText: { color: palette.textFaint, fontSize: type.overline.fontSize },
   root: { flex: 1, backgroundColor: palette.bg },
   header: {
     flexDirection: 'row',

@@ -10,6 +10,23 @@ const DAY = 24 * 60 * 60 * 1000;
 type FsSpy = { copied: string[]; deleted: string[] };
 let mockFsSpy: FsSpy;
 
+// persistPhoto 会先缩图(ImageManipulator),这里给一个最小可用的 mock
+jest.mock('expo-image-manipulator', () => ({
+  SaveFormat: { JPEG: 'jpeg' },
+  FlipType: { Horizontal: 'horizontal' },
+  ImageManipulator: {
+    manipulate: () => {
+      const context = {
+        resize: () => context,
+        renderAsync: async () => ({
+          saveAsync: async () => ({ uri: 'file:///resized.jpg' }),
+        }),
+      };
+      return context;
+    },
+  },
+}));
+
 jest.mock('expo-file-system', () => {
   class MockFile {
     uri: string;

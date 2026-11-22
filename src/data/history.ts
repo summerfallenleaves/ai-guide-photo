@@ -2,8 +2,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Directory, File, Paths } from 'expo-file-system';
 import { useSyncExternalStore } from 'react';
 
+import { Asset } from 'expo-media-library';
+
+import { toHistoryCopy } from '@/infra/analysis-image';
 import type { PhotoMeta } from '@/domain/shared/exif';
-import type { CaptureResult } from '@/domain/shared/types';
+import type { CaptureResult, SceneId } from '@/domain/shared/types';
 
 const STORAGE_KEY = 'history.v1';
 /** 只保留最近多少天(按自然日算) */
@@ -18,6 +21,12 @@ export type HistoryEntry = {
   uri: string;
   createdAt: number;
   savedToAlbum: boolean;
+  /** 相册条目的 MediaStore id;没有它就无法判断相册那边还在不在 */
+  mediaId?: string;
+  /** 相册里的原图已删除:副本随之清理,只保留记录 */
+  imageGone?: boolean;
+  /** 拍照时选的场景(复盘页用来显示"按什么标准点评") */
+  scene?: SceneId;
   meta: PhotoMeta | null;
   status: 'analyzing' | 'done' | 'failed';
   result?: CaptureResult;
@@ -46,11 +55,17 @@ function historyDir(): Directory {
   return dir;
 }
 
-/** 把刚拍的照片复制进文档目录,返回可长期使用的 file:// 地址 */
-export async function persistPhoto(uri: string, id: string): Promise<string> {
+/**
+ * 把照片的**缩小副本**存进文档目录,返回可长期使用的 file:// 地址。
+ *
+ * 只存 1280 长边:原图在相册里,历史不需要第二份全尺寸副本
+ * (原图一张 3~5MB,7 天能到几百 MB)。
+ */
+export async function persistPhoto(uri: string, id: string, width = 0, height = 0): Promise<string> {
   const dest = new File(historyDir(), `${id}.jpg`);
-  const src = new File(uri);
-  await src.copy(dest);
+  const resized = await toHistoryCopy(uri, width, height);
+  const src = new File(resized);
+  src.copy(dest);
   return dest.uri;
 }
 
@@ -127,6 +142,84 @@ export async function loadHistory(): Promise<void> {
       emit();
     });
   return loadPromise;
+}
+
+/**
+ * 判断"相册里那张还在不在"。
+ *
+ * 只有两种情况算已删除:
+ * - 查询返回空(条目真的没了)
+ * - 明确标记进了回收站(Android 11+ 的 isTrashed)
+ *
+ * **查询抛错不算删除** —— 可能是权限、系统繁忙,误判会把用户的照片删掉。
+ */
+export function isAlbumAssetGone(info: { id?: string } | null | undefined): boolean {
+  return !info || !info.id;
+}
+
+/** 查询相册条目:true=还在,false=没了,undefined=查不了(权限/系统错误) */
+async function albumAssetExists(mediaId: string): Promise<boolean | undefined> {
+  try {
+    // 新 API:`Asset` 实例的 getInfo() 去查这个 id;条目不在会抛错
+    const info = await new Asset(mediaId).getInfo();
+    return !!info?.id;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    // 只有"明确不存在"才算删除;权限、系统繁忙一律当作查不了
+    if (/not found|not exist|no such|ENOENT|does not exist/i.test(message)) return false;
+    return undefined;
+  }
+}
+
+/** 哪些条目应该去查相册:存过相册、有 id、还没标记过缺失 */
+export function needsAlbumCheck(entry: HistoryEntry): boolean {
+  return entry.savedToAlbum === true && !!entry.mediaId && !entry.imageGone;
+}
+
+const SYNC_MIN_GAP_MS = 30_000;
+const SYNC_BATCH = 20;
+let lastSyncAt = 0;
+
+/**
+ * 和相册对一次账(方案 A:惰性检查,不监听)。
+ *
+ * 调用点:打开历史页时。最多查最近 20 条,且 30 秒内不重复查。
+ * 查到已删除:删掉我们的副本,保留评分与点评,标记 imageGone。
+ */
+export async function syncWithAlbum(force = false): Promise<boolean> {
+  const now = Date.now();
+  if (!force && now - lastSyncAt < SYNC_MIN_GAP_MS) return false;
+  lastSyncAt = now;
+
+  const targets = entries.filter(needsAlbumCheck).slice(0, SYNC_BATCH);
+  if (targets.length === 0) return false;
+
+  let changed = false;
+  for (const entry of targets) {
+    const exists = await albumAssetExists(entry.mediaId as string);
+    // undefined = 查不了(权限/系统错误),跳过;只有明确不存在才处理
+    if (exists !== false) continue;
+
+    deletePhoto(entry.uri);
+    entries = entries.map((item) => (item.id === entry.id ? { ...item, imageGone: true, uri: '' } : item));
+    changed = true;
+  }
+
+  if (changed) persist();
+  emit();
+  return changed;
+}
+
+/** 清掉"相册已删"的空记录 */
+export function removeImageGoneEntries(): number {
+  const kept = entries.filter((entry) => !entry.imageGone);
+  const removed = entries.length - kept.length;
+  if (removed > 0) {
+    entries = kept;
+    persist();
+    emit();
+  }
+  return removed;
 }
 
 export function getHistory(): HistoryEntry[] {

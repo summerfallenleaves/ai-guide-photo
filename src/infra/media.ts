@@ -1,6 +1,6 @@
 import { Asset, requestPermissionsAsync } from 'expo-media-library';
 
-export type SaveResult = { ok: boolean; error?: string };
+export type SaveResult = { ok: boolean; error?: string; assetId?: string };
 
 /**
  * 把文件存进系统相册。
@@ -13,16 +13,16 @@ export type SaveResult = { ok: boolean; error?: string };
  */
 export async function saveToAlbum(uri: string): Promise<SaveResult> {
   try {
-    await Asset.create(uri);
-    return { ok: true };
+    const asset = await Asset.create(uri);
+    return { ok: true, assetId: asset?.id };
   } catch (directError) {
     try {
       const res = await requestPermissionsAsync(true);
       if (!res.granted) {
         return { ok: false, error: '相册权限被拒绝,请到系统设置里开启' };
       }
-      await Asset.create(uri);
-      return { ok: true };
+      const created = await Asset.create(uri);
+      return { ok: true, assetId: created?.id };
     } catch (retryError) {
       return { ok: false, error: describe(retryError) || describe(directError) };
     }

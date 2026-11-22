@@ -19,31 +19,33 @@
 - 发版流程见 [RELEASING.md](./RELEASING.md)
 
 <p align="center">
-  <img src="docs/screenshots/main.jpg" width="230" alt="取景页:实时建议、4:3 取景框、水平仪、实时 ISO 与快门" />
+  <img src="docs/screenshots/main.jpg" width="230" alt="取景页:AI 会话给出一条具体建议,并自动把 ISO 与快门调到合适值" />
   &nbsp;&nbsp;
-  <img src="docs/screenshots/review.jpg" width="230" alt="拍后点评:52 分、做得好的地方、3 条具体改进、可一键应用的参数" />
+  <img src="docs/screenshots/scene.jpg" width="230" alt="先选场景(人像/风光/美食/街拍/其他),再开始 AI 取景" />
 </p>
 
 <p align="center">
-  <sub>取景 → 拍后点评(拍得不好就照实说)</sub>
+  <sub>AI 边看边给建议(还顺手调了参数)→ 先选场景,再开始</sub>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/history.jpg" width="230" alt="拍照历史:平均分、7 天趋势、结论分布、最常需要改的维度" />
+  <img src="docs/screenshots/review.jpg" width="230" alt="拍后点评:72 分、做得好的地方、两条下次能改的具体动作" />
   &nbsp;&nbsp;
+  <img src="docs/screenshots/history.jpg" width="230" alt="拍照历史:平均分、7 天趋势、最常需要改的维度;相册里删掉的照片会标为已删" />
+</p>
+
+<p align="center">
+  <sub>拍得不好就照实说 → 成长统计(相册删了会同步)</sub>
+</p>
+
+<p align="center">
   <img src="docs/screenshots/pro-panel.jpg" width="230" alt="专业参数面板:曝光补偿 / ISO / 快门 / 对焦 / 白平衡" />
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/settings.jpg" width="230" alt="设置:网格、快速模式、自动拍摄、AI 调参、语音播报、API Key" />
 </p>
 
 <p align="center">
-  <sub>成长统计 → 专业参数(边调边看)</sub>
-</p>
-
-<p align="center">
-  <img src="docs/screenshots/settings.jpg" width="230" alt="设置:网格、快速模式、自动拍摄、语音播报、参数建议、API Key" />
-</p>
-
-<p align="center">
-  <sub>设置:API Key 只加密存在本机</sub>
+  <sub>专业参数(边调边看)→ 设置:API Key 只加密存在本机</sub>
 </p>
 
 ---

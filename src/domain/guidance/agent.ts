@@ -232,7 +232,6 @@ export function adviceDigest(advice: Advice[], max = 8): string | null {
   // 用户中途换过场景时插一行标记:
   // 否则复盘会拿"最终场景"的标准去评价另一个场景下给的建议
   const rows: string[] = [];
-  let counter = 0;
   let previousScene: SceneId | undefined;
   for (const line of picked) {
     if (line.scene !== previousScene) {
@@ -243,9 +242,8 @@ export function adviceDigest(advice: Advice[], max = 8): string | null {
       }
       previousScene = line.scene;
     }
-    counter += 1;
     const suffix = line.repeat > 1 ? `(同一建议第 ${line.repeat} 次)` : '';
-    rows.push(`${counter}. [${DIM_LABELS[line.dim as Dim] ?? line.dim}] ${line.action}${suffix}`);
+    rows.push(`- [${DIM_LABELS[line.dim as Dim] ?? line.dim}] ${line.action}${suffix}`);
   }
 
   return `本次取景共 ${advice.length} 轮建议,用户按此取景后拍摄:\n${rows.join('\n')}`;

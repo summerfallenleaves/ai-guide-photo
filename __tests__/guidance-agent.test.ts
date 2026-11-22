@@ -195,6 +195,15 @@ describe('失败处理', () => {
 });
 
 describe('复盘摘要 adviceDigest', () => {
+  it('摘要不带编号,避免点评时出现"第 N 条建议"', () => {
+    const digest = adviceDigest([
+      { headline: 'a', action: '抬高手机', dim: 'composition', scene: 'portrait' },
+      { headline: 'b', action: '往左半步', dim: 'composition', scene: 'portrait' },
+    ])!;
+    expect(digest).not.toMatch(/^\s*\d+\./m);
+    expect(digest).toContain('- [构图] 抬高手机');
+  });
+
   it('换场景时插入切换标记,且不合并不同场景的相同动作', () => {
     const digest = adviceDigest([
       { headline: 'a', action: '往左半步', dim: 'composition', scene: 'portrait' },

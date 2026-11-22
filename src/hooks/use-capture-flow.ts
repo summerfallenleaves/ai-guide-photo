@@ -84,6 +84,8 @@ export function useCaptureFlow(deps: CaptureFlowDeps): CaptureFlow {
       // 先直接写相册(Android 13+ 不需要权限),失败才申请
       const saveResult = await saveToAlbum(shotUri);
       const saved = saveResult.ok;
+      // 记下相册条目的 id:以后判断"相册里那张还在不在"只能靠它
+      const mediaId = saveResult.assetId;
       if (!saved) console.warn('[capture] 保存相册失败:', saveResult.error);
 
       const photoMeta = d.meta();
@@ -120,6 +122,8 @@ export function useCaptureFlow(deps: CaptureFlowDeps): CaptureFlow {
         uri: stableUri,
         createdAt: Date.now(),
         savedToAlbum: saved,
+        mediaId,
+        scene: d.getScene(),
         meta: photoMeta,
         status: 'analyzing',
       });

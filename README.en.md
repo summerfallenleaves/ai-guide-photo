@@ -17,26 +17,28 @@ camera settings with one tap**.
 - Android only. iOS untested, HarmonyOS NEXT unsupported
 
 <p align="center">
-  <img src="docs/screenshots/main.jpg" width="230" alt="Camera screen: live suggestion, 4:3 viewfinder, level, live ISO and shutter" />
+  <img src="docs/screenshots/main.jpg" width="230" alt="Camera screen: one concrete tip from the AI session, plus auto-adjusted ISO and shutter" />
   &nbsp;&nbsp;
-  <img src="docs/screenshots/review.jpg" width="230" alt="Post-shot review: 52 points, what worked, three concrete fixes, one-tap settings" />
+  <img src="docs/screenshots/scene.jpg" width="230" alt="Pick a scene first (portrait/landscape/food/street/other), then start the AI session" />
 </p>
 <p align="center">
-  <sub>Framing → post-shot review (a weak shot gets an honest score)</sub>
+  <sub>The AI watches and suggests (and tunes exposure too) &rarr; pick a scene, then start</sub>
 </p>
 <p align="center">
-  <img src="docs/screenshots/history.jpg" width="230" alt="Photo history: average score, 7-day trend, verdict split, weakest dimension" />
+  <img src="docs/screenshots/review.jpg" width="230" alt="Post-shot review: 72 points, what worked, two concrete fixes for next time" />
   &nbsp;&nbsp;
+  <img src="docs/screenshots/history.jpg" width="230" alt="Photo history: average score, 7-day trend, weakest dimension; photos deleted from the gallery are marked" />
+</p>
+<p align="center">
+  <sub>Honest review (a weak shot gets a weak score) &rarr; growth stats (synced with your gallery)</sub>
+</p>
+<p align="center">
   <img src="docs/screenshots/pro-panel.jpg" width="230" alt="Pro panel: exposure comp, ISO, shutter, focus, white balance" />
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/settings.jpg" width="230" alt="Settings: grid, fast mode, auto capture, AI tuning, voice guide, API key" />
 </p>
 <p align="center">
-  <sub>Growth stats → pro panel (adjust while watching the frame)</sub>
-</p>
-<p align="center">
-  <img src="docs/screenshots/settings.jpg" width="230" alt="Settings: API key, fast mode, auto analysis, voice guide, parameter hints" />
-</p>
-<p align="center">
-  <sub>Settings: the API key lives only on this device</sub>
+  <sub>Pro controls (adjust while watching the frame) &rarr; settings: the API key lives only on this device</sub>
 </p>
 
 ## What it does

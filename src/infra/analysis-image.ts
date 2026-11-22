@@ -27,6 +27,34 @@ export async function mirrorForFront(uri: string, isFront: boolean): Promise<str
   return saved.uri;
 }
 
+/** 历史副本长边:够手机屏看,又比原图小一个数量级 */
+export const HISTORY_LONG_SIDE = 1280;
+const HISTORY_QUALITY = 0.85;
+
+/**
+ * 生成"历史用"的缩小副本。
+ *
+ * 历史记录里存的是**副本**,不是原图(原图在相册):
+ * 4080×3072 的原图一张 3~5MB,7 天下来能到几百 MB;
+ * 缩到 1280 长边后单张约 200~350KB,手机上看着没有区别。
+ */
+export async function toHistoryCopy(uri: string, width: number, height: number): Promise<string> {
+  const w = Number.isFinite(width) && width > 0 ? width : 0;
+  const h = Number.isFinite(height) && height > 0 ? height : 0;
+  const longSide = Math.max(w, h);
+
+  const context = ImageManipulator.manipulate(uri);
+  if (longSide === 0 || longSide > HISTORY_LONG_SIDE) {
+    // 拿不到尺寸时按宽度兜底,和送模型那条路径一致
+    if (longSide > 0 && w < h) context.resize({ height: HISTORY_LONG_SIDE });
+    else context.resize({ width: HISTORY_LONG_SIDE });
+  }
+
+  const image = await context.renderAsync();
+  const result = await image.saveAsync({ compress: HISTORY_QUALITY, format: SaveFormat.JPEG });
+  return result.uri;
+}
+
 /**
  * 生成"只用于送模型分析"的 base64。
  *
